@@ -193,10 +193,13 @@ export default function App() {
   const [sortKey, setSortKey] = useState("Added");
   const [desc, setDesc] = useState(false);
 
-  const [tab, setTab] = useState<"library" | "spotify" | "search" | "generate">("library");
+  const [tab, setTab] = useState<"library" | "sources" | "search" | "generate">("library");
   const [view, setView] = useState<string | null | undefined>(undefined); // undefined = playlist list
   const [locals, setLocals] = useState<Local[]>([]);
   const [allCount, setAllCount] = useState(0);
+  const [prov, setProv] = useState("spotify");
+  const [provs, setProvs] = useState<{ id: string; name: string; connected: boolean }[]>([]);
+  const provName = provs.find((p) => p.id === prov)?.name ?? "Spotify";
   const [remotes, setRemotes] = useState<Remote[] | null>(null);
   const [preview, setPreview] = useState<{ remote: Remote; tracks: Track[] } | null>(null);
   const [msg, setMsg] = useState("");
@@ -235,10 +238,13 @@ export default function App() {
     setRows(await invoke<Row[]>("library"));
   };
 
+  useEffect(() => { refresh(); }, []);
   useEffect(() => {
-    refresh();
-    invoke<Remote[]>("provider_playlists", { id: "spotify" }).then(setRemotes).catch(() => setRemotes([]));
-  }, []);
+    invoke<{ id: string; name: string; connected: boolean }[]>("provider_list").then(setProvs).catch(() => {});
+    setRemotes(null);
+    setPreview(null);
+    invoke<Remote[]>("provider_playlists", { id: prov }).then(setRemotes).catch(() => setRemotes([]));
+  }, [prov]);
 
   /* ----- visualiser pattern for the playing track ----- */
   useEffect(() => {
@@ -402,13 +408,14 @@ export default function App() {
   const backToLists = async () => { setView(undefined); setPreview(null); setMsg(""); };
   const connect = () => run(async () => {
     setMsg("OPENING BROWSER...");
-    await invoke("provider_connect", { id: "spotify" });
-    setRemotes(await invoke<Remote[]>("provider_playlists", { id: "spotify" }));
+    await invoke("provider_connect", { id: prov });
+    setRemotes(await invoke<Remote[]>("provider_playlists", { id: prov }));
+    setProvs(await invoke("provider_list"));
     setMsg("");
   });
   const openRemote = (r: Remote) => run(async () => {
     setMsg(`LOADING ${r.name}...`);
-    setPreview({ remote: r, tracks: await invoke<Track[]>("provider_preview", { id: "spotify", playlistId: r.id }) });
+    setPreview({ remote: r, tracks: await invoke<Track[]>("provider_preview", { id: prov, playlistId: r.id }) });
     setMsg("");
   });
   const importPlaylist = () => run(async () => {
@@ -616,7 +623,7 @@ export default function App() {
         <div className="winhead">
           {(inTracks || preview) && <button className="btn" onClick={backToLists}><Ic.Back /> BACK</button>}
           <span className="crumb">
-            {preview ? preview.remote.name.toUpperCase() : inTracks ? playlistName.toUpperCase() : tab === "library" ? "PLAYLISTS" : tab === "search" ? "SEARCH" : tab === "generate" ? "GENERATE" : "SPOTIFY"}
+            {preview ? preview.remote.name.toUpperCase() : inTracks ? playlistName.toUpperCase() : tab === "library" ? "PLAYLISTS" : tab === "search" ? "SEARCH" : tab === "generate" ? "GENERATE" : provName.toUpperCase()}
           </span>
           <span className="sp" style={{ flex: 1 }} />
 
@@ -628,7 +635,7 @@ export default function App() {
           {!inTracks && !preview && (
             <div className="seg">
               <button className={tab === "library" ? "on" : ""} onClick={() => setTab("library")}>LIBRARY</button>
-              <button className={tab === "spotify" ? "on" : ""} onClick={() => setTab("spotify")}>SPOTIFY</button>
+              <button className={tab === "sources" ? "on" : ""} onClick={() => setTab("sources")}>SOURCES</button>
               <button className={tab === "search" ? "on" : ""} onClick={() => setTab("search")}>SEARCH</button>
               <button className={tab === "generate" ? "on" : ""} onClick={() => setTab("generate")}>GENERATE</button>
             </div>
@@ -662,7 +669,7 @@ export default function App() {
                 <tr key={l.id} onClick={() => openList(l.id)}>
                   <td className="dim">{String(i + 1).padStart(2, "0")}</td>
                   <td>{l.name}</td>
-                  <td><span className={`tag ${l.remote ? "hot" : ""}`}>{l.remote ? "SPOTIFY" : l.name === "Demo" ? "DEMO" : "LOCAL"}</span></td>
+                  <td><span className={`tag ${l.remote ? "hot" : ""}`}>{l.remote ? "REMOTE" : l.name === "Demo" ? "DEMO" : "LOCAL"}</span></td>
                   <td className="num">{l.count}</td>
                 </tr>
               ))}
@@ -723,14 +730,23 @@ export default function App() {
                 </select><Ic.Chevron />
               </label>
             </div>
-            {results === null ? <div className="empty">SEARCH SPOTIFY, THEN ＋ TO ADD A TRACK TO "{targetName.toUpperCase() || "A PLAYLIST"}"</div>
-              : results.length === 0 ? <div className="empty">NO RESULTS (OR NOT CONNECTED TO SPOTIFY)</div>
+            {results === null ? <div className="empty">SEARCH YOUR CONNECTED SOURCES, THEN ＋ TO ADD A TRACK TO "{targetName.toUpperCase() || "A PLAYLIST"}"</div>
+              : results.length === 0 ? <div className="empty">NO RESULTS (OR NO SOURCE CONNECTED)</div>
               : <TrackTable rows={results} onAdd={addTo} />}
           </>
         )}
 
+        {tab === "sources" && !preview && provs.length > 1 && (
+          <div className="winhead">
+            <span className="label" style={{ margin: 0 }}>SOURCE</span>
+            {provs.map((p) => (
+              <button key={p.id} className={`btn small ${p.id === prov ? "on" : ""}`} onClick={() => setProv(p.id)}>{p.name.toUpperCase()}{p.connected ? " ●" : ""}</button>
+            ))}
+          </div>
+        )}
+
         {/* spotify: import your listening history */}
-        {tab === "spotify" && !preview && remotes && remotes.length > 0 && (
+        {tab === "sources" && prov === "spotify" && !preview && remotes && remotes.length > 0 && (
           <div className="winhead">
             <span className="label" style={{ margin: 0 }}>IMPORT</span>
             {([["liked", "LIKED SONGS"], ["top", "TOP TRACKS"], ["recent", "RECENT"], ["artists", "TOP ARTISTS"], ["all", "EVERYTHING"]] as const).map(([k, label]) => (
@@ -748,7 +764,7 @@ export default function App() {
         )}
 
         {/* spotify: remote playlists table */}
-        {tab === "spotify" && !preview && (
+        {tab === "sources" && !preview && (
           remotes && remotes.length > 0 ? (
             <div className="scroll"><table>
               <thead><tr><th>#</th><th>PLAYLIST</th><th>STATUS</th><th className="num">TRACKS</th></tr></thead>
@@ -766,14 +782,14 @@ export default function App() {
             <div className="empty"><button className="btn" onClick={connect}><Ic.Plug /> RECONNECT</button></div></div>
           ) : (
             <div className="empty">
-              {remotes === null ? "LOADING..." : "NOT CONNECTED TO SPOTIFY"}<br />
+              {remotes === null ? "LOADING..." : `NOT CONNECTED TO ${provName.toUpperCase()}`}<br />
               <button className="btn primary" style={{ width: "auto", padding: "0 16px", marginTop: 10 }} onClick={connect}><Ic.Plug /> CONNECT</button>
             </div>
           )
         )}
 
         {/* spotify: preview before import */}
-        {tab === "spotify" && preview && (
+        {tab === "sources" && preview && (
           <>
             <div className="status" style={{ color: "var(--dim)" }}>PREVIEW · {preview.tracks.length} TRACKS · NOTHING SAVED YET</div>
             {preview.tracks.length === 0

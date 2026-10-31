@@ -25,6 +25,7 @@ serde_json = "1"
 spinamp-core = { path = "../crates/spinamp-core" }
 rand = "0.9"
 spinamp-spotify = { path = "../crates/spinamp-spotify" }
+spinamp-applemusic = { path = "../crates/spinamp-applemusic" }
 spinamp-store = { path = "../crates/spinamp-store" }
 spinamp-services = { path = "../crates/spinamp-services" }
 spinamp-audio = { path = "../crates/spinamp-audio" }

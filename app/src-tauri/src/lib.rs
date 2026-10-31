@@ -16,6 +16,7 @@ use spinamp_core::block::{Blocklist, playable};
 use spinamp_core::listen::{Event, Observation, Tracker};
 use spinamp_core::provider::{MusicProvider, ProviderRegistry};
 use spinamp_core::stats::{self, StatsConfig};
+use spinamp_applemusic::AppleMusicProvider;
 use spinamp_spotify::SpotifyProvider;
 use spinamp_store::{PlayLogRow, PlayStart, PlaylistInfo, Store};
 use std::sync::{Arc, Mutex};
@@ -44,6 +45,7 @@ struct App {
     providers: ProviderRegistry,
     /// Spotify-specific bits (OAuth, history import, discovery seeds).
     spotify: Arc<SpotifyProvider>,
+    applemusic: Arc<AppleMusicProvider>,
     library: Vec<TrackState>,
     /// Selected playlist id and its ordered members; None = all tracks.
     view: Option<(String, Vec<TrackId>)>,
@@ -912,6 +914,7 @@ fn pick_inner(a: &mut App, mode: PlayMode) -> Option<Next> {
 async fn provider_connect(app: State<'_, Shared>, id: String) -> Result<(), String> {
     match id.as_str() {
         "spotify" => spotify_connect(&app).await,
+        "applemusic" => applemusic_connect(&app).await,
         other => Err(format!("{other} sign-in is not available yet.")),
     }
 }
@@ -931,6 +934,43 @@ async fn spotify_connect(app: &Shared) -> Result<(), String> {
     let sp = app.lock().unwrap().spotify.clone();
     sp.set_tokens(tokens).await;
     persist_tokens(app, &*sp).await;
+    Ok(())
+}
+
+async fn applemusic_connect(app: &Shared) -> Result<(), String> {
+    let (am, port) = {
+        let a = app.lock().unwrap();
+        (a.applemusic.clone(), a.settings.callback_port)
+    };
+    if !am.has_key().await {
+        return Err("Add your Apple MusicKit key in Settings first.".into());
+    }
+    let dev = am.developer_token().await?;
+    let session = spinamp_applemusic::Session::begin(&dev, port).await?;
+    tauri_plugin_opener::open_url(session.authorize_url.clone(), None::<&str>).map_err(|e| e.to_string())?;
+    am.set_user_token(session.finish().await?).await;
+    persist_tokens(app, &*am).await;
+    Ok(())
+}
+
+/// Install the user's own MusicKit key. `source` is a path to the `.p8` file or its PEM text.
+/// The key is kept only in the OS keychain (inside the provider's credential blob).
+#[tauri::command]
+async fn applemusic_set_key(app: State<'_, Shared>, source: String, key_id: String, team_id: String) -> Result<(), String> {
+    let source = source.trim();
+    let pem = if source.contains("BEGIN") {
+        source.to_string()
+    } else {
+        let path = source.strip_prefix("~/").map(|r| format!("{}/{r}", std::env::var("HOME").unwrap_or_default())).unwrap_or_else(|| source.to_string());
+        std::fs::read_to_string(&path).map_err(|e| format!("could not read {path}: {e}"))?
+    };
+    let (key_id, team_id) = (key_id.trim(), team_id.trim());
+    if key_id.is_empty() || team_id.is_empty() {
+        return Err("Key ID and Team ID are required.".into());
+    }
+    let am = app.lock().unwrap().applemusic.clone();
+    am.set_key(&pem, key_id, team_id).await?;
+    persist_tokens(&app, &*am).await;
     Ok(())
 }
 
@@ -1174,6 +1214,9 @@ pub fn run() {
     let spotify = Arc::new(SpotifyProvider::new(settings.client_id(), saved));
     let mut providers = ProviderRegistry::default();
     providers.register(spotify.clone());
+    let (am_blob, _) = credentials::load_or_migrate(&credentials::Keychain, &store, "applemusic");
+    let applemusic = Arc::new(AppleMusicProvider::new(am_blob.and_then(|j| serde_json::from_str(&j).ok())));
+    providers.register(applemusic.clone());
     let mut state = App {
         settings,
         blocklist: Blocklist::from_rows(&store_blocks),
@@ -1183,6 +1226,7 @@ pub fn run() {
         store,
         providers,
         spotify,
+        applemusic,
         library: tracks,
         view: None,
         candidates,
@@ -1201,7 +1245,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(state))
-        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, provider_connect, provider_list, provider_status, provider_disconnect, provider_playlists, provider_preview, analysis_status, analysis_start, analysis_stop, viz_pattern, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
+        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, provider_connect, applemusic_set_key, provider_list, provider_status, provider_disconnect, provider_playlists, provider_preview, analysis_status, analysis_start, analysis_stop, viz_pattern, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

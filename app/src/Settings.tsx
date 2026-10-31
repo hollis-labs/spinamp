@@ -43,6 +43,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [msg, setMsg] = useState("");
   const [cat, setCat] = useState<Catalog | null>(null);
   const [conn, setConn] = useState<Conn | null>(null);
+  const [am, setAm] = useState<Conn | null>(null);
+  const [amKey, setAmKey] = useState({ source: "", keyId: "", teamId: "" });
   const [an, setAn] = useState<Analysis | null>(null);
   const [del, setDel] = useState<Deleted | null>(null);
   const [cap, setCap] = useState<Cap | null>(null);
@@ -50,7 +52,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [capMsg, setCapMsg] = useState("");
 
   const load = async () => { const r = await invoke<View>("get_settings"); setV(r); setS(r.settings); };
-  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
+  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Conn>("provider_status", { id: "applemusic" }).then(setAm); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
   useEffect(() => {
     if (!cat?.running) return;
     const id = setInterval(async () => setCat(await invoke<Catalog>("catalog_status")), 2000);
@@ -84,6 +86,25 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         </Row>
         <Row label="Callback port" hint={`Redirect URI to register: http://127.0.0.1:${s.callback_port}/callback`}>
           <input className="inp short" type="number" value={s.callback_port} onChange={(e) => set("callback_port", Number(e.target.value))} />
+        </Row>
+
+        <h3>APPLE MUSIC</h3>
+        <Row label="Connection" hint={am?.connected ? "Signed in. Your key and token are stored in the macOS Keychain." : "Needs your own MusicKit key (developer.apple.com > Keys), then CONNECT in the SOURCES tab. Playback uses the Music app and only plays tracks in your library."}>
+          <span className={am?.connected ? "ok-text" : "dim"}>{am?.connected ? "CONNECTED" : "NOT CONNECTED"}</span>
+          {am?.connected && <button className="btn bad" onClick={() => act(async () => { await invoke("provider_disconnect", { id: "applemusic" }); setAm(await invoke<Conn>("provider_status", { id: "applemusic" })); return "DISCONNECTED"; })}>DISCONNECT</button>}
+        </Row>
+        <Row label="MusicKit key" hint="Path to your AuthKey_XXXX.p8 (or paste its contents), with its Key ID and your Team ID. Saved to the Keychain, never to disk or the repo.">
+          <input className="inp" value={amKey.source} onChange={(e) => setAmKey({ ...amKey, source: e.target.value })} placeholder="~/Downloads/AuthKey_XXXXXXXXXX.p8" autoComplete="off" />
+        </Row>
+        <Row label="Key ID / Team ID" hint="Key ID is in the .p8 file name. Team ID is under Membership in your Apple Developer account.">
+          <input className="inp short" value={amKey.keyId} onChange={(e) => setAmKey({ ...amKey, keyId: e.target.value })} placeholder="Key ID" />
+          <input className="inp short" value={amKey.teamId} onChange={(e) => setAmKey({ ...amKey, teamId: e.target.value })} placeholder="Team ID" />
+          <button className="btn" disabled={!amKey.source.trim() || !amKey.keyId.trim() || !amKey.teamId.trim()} onClick={() => act(async () => {
+            await invoke("applemusic_set_key", { source: amKey.source, keyId: amKey.keyId, teamId: amKey.teamId });
+            setAmKey({ source: "", keyId: "", teamId: "" });
+            setAm(await invoke<Conn>("provider_status", { id: "applemusic" }));
+            return "KEY SAVED. NOW CONNECT IN THE SOURCES TAB";
+          })}>SAVE KEY</button>
         </Row>
 
         <h3>AI</h3>

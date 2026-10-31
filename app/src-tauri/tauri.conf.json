@@ -44,7 +44,8 @@
     "shortDescription": "A playlist-first music player that learns what you love",
     "longDescription": "Spinamp is a playlist-first music player with smart shuffle, discovery, prompt-to-playlist, lyrics and a visualizer that follows the song.",
     "macOS": {
-      "minimumSystemVersion": "13.0"
+      "minimumSystemVersion": "13.0",
+      "entitlements": "Entitlements.plist"
     },
     "windows": {
       "nsis": {
