@@ -92,6 +92,13 @@ impl ProviderRegistry {
         self.providers.insert(p.id(), p);
     }
 
+    /// Every registered provider, in a stable order (by id).
+    pub fn all(&self) -> Vec<Arc<dyn MusicProvider>> {
+        let mut v: Vec<_> = self.providers.values().cloned().collect();
+        v.sort_by_key(|p| p.id());
+        v
+    }
+
     pub fn get(&self, id: &str) -> Result<&Arc<dyn MusicProvider>> {
         self.providers.get(id).ok_or_else(|| ProviderError::Unknown(id.into()))
     }

@@ -230,7 +230,7 @@ pub async fn spotify_import_history(app: State<'_, Shared>, kind: String, votes:
             _ => return Err(format!("unknown import kind {k}")),
         }
     }
-    crate::persist_tokens(&app, &sp).await;
+    crate::persist_tokens(&app, &*sp).await;
     let mut a = app.lock().unwrap();
     let _ = a.store.tag_from_artist_cache();
     reload(&mut a)?;

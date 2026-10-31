@@ -14,7 +14,7 @@ use spinamp_core::sort::{self, SortKey};
 use spinamp_core::{Track, TrackId, TrackState};
 use spinamp_core::block::{Blocklist, playable};
 use spinamp_core::listen::{Event, Observation, Tracker};
-use spinamp_core::provider::MusicProvider;
+use spinamp_core::provider::{MusicProvider, ProviderRegistry};
 use spinamp_core::stats::{self, StatsConfig};
 use spinamp_spotify::SpotifyProvider;
 use spinamp_store::{PlayLogRow, PlayStart, PlaylistInfo, Store};
@@ -40,6 +40,9 @@ struct App {
     catalog: Arc<catalog::Catalog>,
     enrich: Arc<Enrich>,
     store: Store,
+    /// Every connected-or-not provider; playback and search route through this.
+    providers: ProviderRegistry,
+    /// Spotify-specific bits (OAuth, history import, discovery seeds).
     spotify: Arc<SpotifyProvider>,
     library: Vec<TrackState>,
     /// Selected playlist id and its ordered members; None = all tracks.
@@ -138,11 +141,9 @@ fn sort_library(app: State<Shared>, key: SortKey, descending: bool) -> Vec<Row> 
 
 #[tauri::command]
 async fn next_track(app: State<'_, Shared>, handle: AppHandle, mode: PlayMode) -> Result<Option<Next>, String> {
-    let (picked, spotify) = pick_next(&app, mode);
+    let (picked, players) = pick_next(&app, mode);
     if let Some(p) = &picked {
-        if p.track.provider == "spotify" {
-            play_or_wake(&spotify, &p.track).await?;
-        }
+        players.play(&p.track).await?;
         begin_play(&mut app.lock().unwrap(), &p.track, &format!("{mode:?}"), "auto", p.discovery);
         capture::reconcile(&handle);
         if p.discovery && pool_low(&handle) {
@@ -152,12 +153,52 @@ async fn next_track(app: State<'_, Shared>, handle: AppHandle, mode: PlayMode) -
     Ok(picked)
 }
 
-fn pick_next(app: &Shared, mode: PlayMode) -> (Option<Next>, Arc<SpotifyProvider>) {
+fn pick_next(app: &Shared, mode: PlayMode) -> (Option<Next>, Players) {
     let mut guard = app.lock().unwrap();
     let a = &mut *guard;
-    let spotify = a.spotify.clone();
+    let players = players(a);
     let picked = pick_inner(a, mode);
-    (picked, spotify)
+    (picked, players)
+}
+
+/// Everything needed to start or control playback, cloned out of the app lock.
+#[derive(Clone)]
+struct Players {
+    reg: ProviderRegistry,
+    spotify: Arc<SpotifyProvider>,
+    /// Provider of the track we believe is playing (None until something has played).
+    active: Option<String>,
+}
+
+fn players(a: &App) -> Players {
+    Players { reg: a.providers.clone(), spotify: a.spotify.clone(), active: a.now_track.as_ref().map(|t| t.provider.to_string()) }
+}
+
+impl Players {
+    /// Start a track on the provider that owns it. Spotify gets the wake-the-app fallback.
+    async fn play(&self, track: &Track) -> Result<(), String> {
+        if track.provider == "spotify" {
+            return play_or_wake(&self.spotify, track).await;
+        }
+        self.reg.play(track).await.map_err(|e| e.to_string())
+    }
+
+    /// The provider to pause/resume/seek: whoever owns the current track, else Spotify.
+    fn control(&self) -> Arc<dyn MusicProvider> {
+        self.active
+            .as_deref()
+            .and_then(|id| self.reg.get(id).ok().cloned())
+            .unwrap_or_else(|| self.spotify.clone() as Arc<dyn MusicProvider>)
+    }
+
+    /// Providers worth polling: the active one, or all of them when nothing has played yet
+    /// (so playback started in another app is noticed).
+    fn poll_targets(&self) -> Vec<Arc<dyn MusicProvider>> {
+        match self.active.as_deref().and_then(|id| self.reg.get(id).ok().cloned()) {
+            Some(p) => vec![p],
+            None => self.reg.all(),
+        }
+    }
 }
 
 /// Play on Spotify; if no device is online, launch the desktop app (macOS) and retry for ~12s.
@@ -258,14 +299,12 @@ fn begin_play(a: &mut App, track: &Track, mode: &str, trigger: &str, discovery: 
 /// Play a specific track (clicked in the playlist).
 #[tauri::command]
 async fn play_track(app: State<'_, Shared>, handle: AppHandle, id: String) -> Result<Option<Next>, String> {
-    let (track, spotify) = {
+    let (track, players) = {
         let a = app.lock().unwrap();
         let Some(t) = a.library.iter().find(|t| t.track.id.0 == id).map(|t| t.track.clone()) else { return Ok(None) };
-        (t, a.spotify.clone())
+        (t, players(&a))
     };
-    if track.provider == "spotify" {
-        play_or_wake(&spotify, &track).await?;
-    }
+    players.play(&track).await?;
     begin_play(&mut app.lock().unwrap(), &track, "manual", "click", false);
     capture::reconcile(&handle);
     Ok(Some(Next { track, discovery: false }))
@@ -284,11 +323,21 @@ struct PollResult {
 #[tauri::command]
 async fn poll_playback(app: State<'_, Shared>, handle: AppHandle) -> Result<PollResult, String> {
     let idle = PollResult { track: None, is_playing: false, position_ms: 0, matches: false };
-    let sp = app.lock().unwrap().spotify.clone();
-    if !sp.is_authenticated().await {
-        return Ok(idle);
+    let players = players(&app.lock().unwrap());
+    let mut found = None;
+    for p in players.poll_targets() {
+        if !p.is_authenticated().await {
+            continue;
+        }
+        if let Ok(pb) = p.now_playing().await {
+            let playing = pb.is_playing;
+            found = Some(pb);
+            if playing {
+                break;
+            }
+        }
     }
-    let Ok(pb) = sp.now_playing().await else { return Ok(idle) };
+    let Some(pb) = found else { return Ok(idle) };
     let mut guard = app.lock().unwrap();
     let a = &mut *guard;
     let evs = a.tracker.observe(Observation {
@@ -326,7 +375,7 @@ fn set_tz_offset(app: State<Shared>, minutes_west: i64) {
 
 #[tauri::command]
 async fn playback_pause(app: State<'_, Shared>, handle: AppHandle) -> Result<(), String> {
-    let sp = app.lock().unwrap().spotify.clone();
+    let sp = { let a = app.lock().unwrap(); players(&a).control() };
     app.lock().unwrap().capture.set_playing(false);
     capture::reconcile(&handle);
     if sp.is_authenticated().await { sp.pause().await.map_err(|e| e.to_string())?; }
@@ -335,7 +384,7 @@ async fn playback_pause(app: State<'_, Shared>, handle: AppHandle) -> Result<(),
 
 #[tauri::command]
 async fn playback_resume(app: State<'_, Shared>, handle: AppHandle) -> Result<(), String> {
-    let sp = app.lock().unwrap().spotify.clone();
+    let sp = { let a = app.lock().unwrap(); players(&a).control() };
     app.lock().unwrap().capture.set_playing(true);
     capture::reconcile(&handle);
     if sp.is_authenticated().await { sp.resume().await.map_err(|e| e.to_string())?; }
@@ -746,7 +795,7 @@ async fn generate_playlist(app: State<'_, Shared>, prompt: String, minutes: Opti
 /// Jump to a position in the playing track (click on the song-shape bar).
 #[tauri::command]
 async fn playback_seek(app: State<'_, Shared>, handle: AppHandle, position_ms: u64) -> Result<(), String> {
-    let sp = app.lock().unwrap().spotify.clone();
+    let sp = { let a = app.lock().unwrap(); players(&a).control() };
     if sp.is_authenticated().await {
         sp.seek(position_ms).await.map_err(|e| e.to_string())?;
     }
@@ -858,8 +907,16 @@ fn pick_inner(a: &mut App, mode: PlayMode) -> Option<Next> {
     Some(picked)
 }
 
+/// Sign in to a provider. Each provider has its own flow; the UI only knows the id.
 #[tauri::command]
-async fn spotify_connect(app: State<'_, Shared>, handle: AppHandle) -> Result<(), String> {
+async fn provider_connect(app: State<'_, Shared>, id: String) -> Result<(), String> {
+    match id.as_str() {
+        "spotify" => spotify_connect(&app).await,
+        other => Err(format!("{other} sign-in is not available yet.")),
+    }
+}
+
+async fn spotify_connect(app: &Shared) -> Result<(), String> {
     let (cid, port) = {
         let a = app.lock().unwrap();
         (a.settings.client_id(), a.settings.callback_port)
@@ -870,52 +927,71 @@ async fn spotify_connect(app: State<'_, Shared>, handle: AppHandle) -> Result<()
     app.lock().unwrap().spotify.set_client_id(&cid);
     let session = spinamp_spotify::Session::begin(&cid, port).await.map_err(|e| e.to_string())?;
     tauri_plugin_opener::open_url(session.authorize_url.clone(), None::<&str>).map_err(|e| e.to_string())?;
-    let _ = handle;
     let tokens = session.finish(now()).await?;
     let sp = app.lock().unwrap().spotify.clone();
     sp.set_tokens(tokens).await;
-    persist_tokens(&app, &sp).await;
+    persist_tokens(app, &*sp).await;
     Ok(())
 }
 
 #[derive(Serialize)]
 struct ProviderStatus {
+    id: String,
+    name: String,
     connected: bool,
     storage: credentials::Storage,
 }
 
-/// Connection state and where the credentials are kept (keychain / sqlite fallback).
-#[tauri::command]
-async fn spotify_status(app: State<'_, Shared>) -> Result<ProviderStatus, String> {
-    let sp = app.lock().unwrap().spotify.clone();
-    let connected = sp.is_authenticated().await;
-    let storage = credentials::storage_of(&credentials::Keychain, &app.lock().unwrap().store, "spotify");
-    Ok(ProviderStatus { connected, storage })
+async fn status_of(app: &Shared, p: &Arc<dyn MusicProvider>) -> ProviderStatus {
+    let connected = p.is_authenticated().await;
+    let storage = credentials::storage_of(&credentials::Keychain, &app.lock().unwrap().store, p.id());
+    ProviderStatus { id: p.id().into(), name: p.display_name().into(), connected, storage }
 }
 
-/// Forget the Spotify session everywhere (memory, keychain, legacy sqlite copy).
+fn provider_of(app: &Shared, id: &str) -> Result<Arc<dyn MusicProvider>, String> {
+    app.lock().unwrap().providers.get(id).cloned().map_err(|e| e.to_string())
+}
+
+/// Every provider with its connection state and where its credentials are kept.
 #[tauri::command]
-async fn spotify_disconnect(app: State<'_, Shared>) -> Result<(), String> {
-    let sp = app.lock().unwrap().spotify.clone();
-    sp.disconnect().await.map_err(|e| e.to_string())?;
-    credentials::clear(&credentials::Keychain, &app.lock().unwrap().store, "spotify");
+async fn provider_list(app: State<'_, Shared>) -> Result<Vec<ProviderStatus>, String> {
+    let all = app.lock().unwrap().providers.all();
+    let mut out = vec![];
+    for p in &all {
+        out.push(status_of(&app, p).await);
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+async fn provider_status(app: State<'_, Shared>, id: String) -> Result<ProviderStatus, String> {
+    let p = provider_of(&app, &id)?;
+    Ok(status_of(&app, &p).await)
+}
+
+/// Forget a provider's session everywhere (memory, keychain, legacy sqlite copy).
+#[tauri::command]
+async fn provider_disconnect(app: State<'_, Shared>, id: String) -> Result<(), String> {
+    let p = provider_of(&app, &id)?;
+    p.disconnect().await.map_err(|e| e.to_string())?;
+    credentials::clear(&credentials::Keychain, &app.lock().unwrap().store, p.id());
     Ok(())
 }
 
 #[tauri::command]
-async fn spotify_playlists(app: State<'_, Shared>) -> Result<Vec<spinamp_core::provider::RemotePlaylist>, String> {
-    let sp = app.lock().unwrap().spotify.clone();
-    let r = sp.playlists().await.map_err(|e| e.to_string());
-    persist_tokens(&app, &sp).await;
+async fn provider_playlists(app: State<'_, Shared>, id: String) -> Result<Vec<spinamp_core::provider::RemotePlaylist>, String> {
+    let p = provider_of(&app, &id)?;
+    let r = p.playlists().await.map_err(|e| e.to_string());
+    persist_tokens(&app, &*p).await;
     r
 }
 
 /// Fetch a remote playlist's tracks WITHOUT saving anything.
 #[tauri::command]
-async fn spotify_preview(app: State<'_, Shared>, playlist_id: String) -> Result<Vec<Track>, String> {
-    let sp = app.lock().unwrap().spotify.clone();
-    let tracks = sp.playlist_tracks(&playlist_id).await.map_err(|e| e.to_string())?;
-    persist_tokens(&app, &sp).await;
+async fn provider_preview(app: State<'_, Shared>, id: String, playlist_id: String) -> Result<Vec<Track>, String> {
+    let p = provider_of(&app, &id)?;
+    let tracks = p.playlist_tracks(&playlist_id).await.map_err(|e| e.to_string())?;
+    persist_tokens(&app, &*p).await;
     Ok(tracks)
 }
 
@@ -1039,13 +1115,11 @@ fn delete_playlist(app: State<Shared>, id: String) -> Result<(), String> {
     Ok(())
 }
 
+/// Search every connected provider.
 #[tauri::command]
 async fn search(app: State<'_, Shared>, query: String) -> Result<Vec<Track>, String> {
-    let sp = app.lock().unwrap().spotify.clone();
-    if !sp.is_authenticated().await {
-        return Ok(vec![]);
-    }
-    sp.search(&query, 20).await.map_err(|e| e.to_string())
+    let reg = app.lock().unwrap().providers.clone();
+    Ok(reg.search_all(&query, 20).await)
 }
 
 /// Add a remote search result to the local library.
@@ -1059,7 +1133,7 @@ fn add_to_library(app: State<Shared>, track: Track) -> Result<Vec<Row>, String> 
 
 /// Save a provider's current credentials (call after sign-in and after any API call that may
 /// have refreshed the token).
-async fn persist_tokens(app: &Shared, sp: &SpotifyProvider) {
+async fn persist_tokens(app: &Shared, sp: &dyn MusicProvider) {
     if let Some(blob) = sp.credentials().await {
         credentials::save(&credentials::Keychain, &app.lock().unwrap().store, sp.id(), &blob);
     }
@@ -1098,6 +1172,8 @@ pub fn run() {
     let (blob, _) = credentials::load_or_migrate(&credentials::Keychain, &store, "spotify");
     let saved = blob.and_then(|j| serde_json::from_str(&j).ok());
     let spotify = Arc::new(SpotifyProvider::new(settings.client_id(), saved));
+    let mut providers = ProviderRegistry::default();
+    providers.register(spotify.clone());
     let mut state = App {
         settings,
         blocklist: Blocklist::from_rows(&store_blocks),
@@ -1105,6 +1181,7 @@ pub fn run() {
         analysis: Arc::new(analysis::Analysis::default()),
         catalog: Arc::new(catalog::Catalog::default()),
         store,
+        providers,
         spotify,
         library: tracks,
         view: None,
@@ -1124,7 +1201,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(state))
-        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, spotify_connect, analysis_status, analysis_start, analysis_stop, viz_pattern, spotify_status, spotify_disconnect, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, spotify_playlists, spotify_preview, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
+        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, provider_connect, provider_list, provider_status, provider_disconnect, provider_playlists, provider_preview, analysis_status, analysis_start, analysis_stop, viz_pattern, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

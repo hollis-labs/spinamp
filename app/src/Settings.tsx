@@ -50,7 +50,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [capMsg, setCapMsg] = useState("");
 
   const load = async () => { const r = await invoke<View>("get_settings"); setV(r); setS(r.settings); };
-  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("spotify_status").then(setConn); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
+  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
   useEffect(() => {
     if (!cat?.running) return;
     const id = setInterval(async () => setCat(await invoke<Catalog>("catalog_status")), 2000);
@@ -77,7 +77,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         <h3>SPOTIFY</h3>
         <Row label="Connection" hint={conn?.connected ? (conn.storage === "keychain" ? "Signed in. Tokens are stored in the macOS Keychain." : "Signed in. Keychain unavailable, so tokens are in the local database.") : "Not signed in. Use RECONNECT in the SPOTIFY tab after saving your Client ID."}>
           <span className={conn?.connected ? "ok-text" : "dim"}>{conn?.connected ? "CONNECTED" : "NOT CONNECTED"}</span>
-          {conn?.connected && <button className="btn bad" onClick={() => act(async () => { await invoke("spotify_disconnect"); setConn(await invoke<Conn>("spotify_status")); return "DISCONNECTED"; })}>DISCONNECT</button>}
+          {conn?.connected && <button className="btn bad" onClick={() => act(async () => { await invoke("provider_disconnect", { id: "spotify" }); setConn(await invoke<Conn>("provider_status", { id: "spotify" })); return "DISCONNECTED"; })}>DISCONNECT</button>}
         </Row>
         <Row label="Client ID" hint="From your app at developer.spotify.com.">
           <input className="inp" value={s.spotify_client_id} onChange={(e) => set("spotify_client_id", e.target.value)} placeholder="paste client id" />

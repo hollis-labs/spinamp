@@ -237,7 +237,7 @@ export default function App() {
 
   useEffect(() => {
     refresh();
-    invoke<Remote[]>("spotify_playlists").then(setRemotes).catch(() => setRemotes([]));
+    invoke<Remote[]>("provider_playlists", { id: "spotify" }).then(setRemotes).catch(() => setRemotes([]));
   }, []);
 
   /* ----- visualiser pattern for the playing track ----- */
@@ -402,13 +402,13 @@ export default function App() {
   const backToLists = async () => { setView(undefined); setPreview(null); setMsg(""); };
   const connect = () => run(async () => {
     setMsg("OPENING BROWSER...");
-    await invoke("spotify_connect");
-    setRemotes(await invoke<Remote[]>("spotify_playlists"));
+    await invoke("provider_connect", { id: "spotify" });
+    setRemotes(await invoke<Remote[]>("provider_playlists", { id: "spotify" }));
     setMsg("");
   });
   const openRemote = (r: Remote) => run(async () => {
     setMsg(`LOADING ${r.name}...`);
-    setPreview({ remote: r, tracks: await invoke<Track[]>("spotify_preview", { playlistId: r.id }) });
+    setPreview({ remote: r, tracks: await invoke<Track[]>("provider_preview", { id: "spotify", playlistId: r.id }) });
     setMsg("");
   });
   const importPlaylist = () => run(async () => {
