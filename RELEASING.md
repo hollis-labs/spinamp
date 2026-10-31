@@ -11,23 +11,46 @@
 3. `packaging/update-cask.sh 0.1.0` (Apple Silicon only), then copy the updated cask into the tap repo and push.
 4. The install scripts on spinamp.fm always read the newest release (prereleases included), so nothing else to update.
 
-## Signing: what it takes
-**macOS (recommended before a wider audience).** Apple Developer Program, **$99/year**. It gives you a *Developer ID Application* certificate and notarization, so a downloaded app opens with no Gatekeeper warning, and the Keychain "Always Allow" prompt sticks (a stable signature). Add these repository secrets and the workflow signs and notarizes automatically (no code change):
+## Signing and notarization (macOS)
+Apple Developer Program membership is in place, so releases are signed with a *Developer ID Application*
+certificate and notarized, which means a downloaded app opens with no Gatekeeper warning and the Keychain
+"Always Allow" prompt sticks (stable signature).
+
+**Locally, from a Mac that has the certificate and a `notarytool` keychain profile** (profile name `spinamp`;
+create it once with `xcrun notarytool store-credentials spinamp`):
+
+```sh
+cd app
+export APPLE_SIGNING_IDENTITY="Developer ID Application: <Name> (<TEAMID>)"
+pnpm tauri build --bundles app,dmg          # signs the app with the hardened runtime
+DMG=src-tauri/target/release/bundle/dmg/Spinamp_<version>_aarch64.dmg
+codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$DMG"
+xcrun notarytool submit "$DMG" --keychain-profile spinamp --wait
+xcrun stapler staple "$DMG"
+spctl -a -t open --context context:primary-signature -v "$DMG"   # expect: accepted, Notarized Developer ID
+```
+Then upload the DMG to the release (`gh release upload vX.Y.Z "$DMG" --clobber`), regenerate `SHA256SUMS`,
+and run `packaging/update-cask.sh`.
+
+**In CI (not set up yet).** A `notarytool` keychain profile lives in one Mac's keychain and cannot be copied to
+GitHub, so CI needs its own credentials. Add these repository secrets and the `release` workflow signs and
+notarizes automatically (no code change):
 
 | Secret | What |
 |---|---|
 | `APPLE_CERTIFICATE` | the Developer ID Application cert exported as `.p12`, base64 (`base64 -i cert.p12`) |
 | `APPLE_CERTIFICATE_PASSWORD` | the `.p12` export password |
 | `APPLE_SIGNING_IDENTITY` | e.g. `Developer ID Application: Your Name (TEAMID)` |
-| `APPLE_ID` | your Apple ID email |
-| `APPLE_PASSWORD` | an app-specific password (appleid.apple.com) |
-| `APPLE_TEAM_ID` | your 10-character team ID |
+| `APPLE_API_ISSUER`, `APPLE_API_KEY`, `APPLE_API_KEY_PATH` | an App Store Connect API key (preferred), or instead |
+| `APPLE_ID`, `APPLE_PASSWORD`, `APPLE_TEAM_ID` | your Apple ID, an app-specific password, and team ID |
 
-Once releases are notarized, remove the `postflight` quarantine block from the cask.
+The cask no longer strips the quarantine flag: every published macOS DMG must be signed and notarized. A tag
+pushed to CI without the secrets above publishes an UNSIGNED DMG, so sign locally (above) and replace it, or
+add the secrets first.
 
-**Without it (fine for the early release).** Files fetched by `curl` (the install script) and by the tap cask (which strips the quarantine flag) open normally. Someone who double-clicks a `.dmg` downloaded in a browser will see "Apple cannot check it": they right-click > Open, or System Settings > Privacy & Security > Open Anyway. Note: Homebrew's *official* cask repo requires notarized apps from September 2026, so unsigned builds can only live in your own tap.
-
-**Windows.** Unsigned installers show a SmartScreen notice (More info > Run anyway). Removing it needs a code-signing certificate (an OV/EV certificate from a CA, roughly $200-600/year, hardware-token based) or Azure Trusted Signing (about $10/month, with eligibility rules). Not needed for an early beta.
+**Windows.** Unsigned installers show a SmartScreen notice (More info > Run anyway). Removing it needs a
+code-signing certificate (an OV/EV certificate from a CA, roughly $200-600/year, hardware-token based) or
+Azure Trusted Signing (about $10/month, with eligibility rules). Not needed for an early beta.
 
 ## Notes
 - **Intel Macs are not built.** The ScreenCaptureKit Swift bridge (`apple-metal`) needs the macOS 26 SDK, which the Intel runner images lack, so the first Intel job failed. A cross-compile of the Intel target on the Apple Silicon runner was staged but not tried; re-add the matrix entry (`os: macos-latest`, `--target x86_64-apple-darwin`) to attempt it.
