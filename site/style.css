@@ -57,3 +57,7 @@ h2 { font-family: var(--dot); font-weight: 700; font-size: 28px; letter-spacing:
 footer { margin-top: 70px; padding: 30px 0 50px; border-top: 1px solid var(--line); color: var(--dim); font-size: 12.5px; }
 footer p { margin: 4px 0; }
 code, .cmd code { font-variant-ligatures: none; font-feature-settings: "liga" 0, "calt" 0; }
+
+.steps { margin: 0 0 6px; padding-left: 22px; color: #c8c8c8; max-width: 760px; }
+.steps li { margin: 6px 0; }
+.steps code { background: #101010; border: 1px solid var(--line); border-radius: 4px; padding: 1px 6px; font-size: 13px; }

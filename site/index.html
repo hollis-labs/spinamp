@@ -55,6 +55,14 @@
         </div>
       </div>
       <p class="note" style="margin-top:14px">Or grab the installers directly from <a href="https://github.com/hollis-labs/spinamp/releases">GitHub Releases</a>.</p>
+
+      <h2 style="margin-top:44px;font-size:22px">First run: connect Spotify (2 minutes)</h2>
+      <p class="sub">Spotify requires every app to use a Client ID, and Spinamp doesn't ship one, so you create your own. It's free and stays on your machine.</p>
+      <ol class="steps">
+        <li>Go to <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a> and create an app. Add the redirect URI <code>http://127.0.0.1:43821/callback</code>.</li>
+        <li>Open Spinamp, click the settings icon, and paste the app's <b>Client ID</b>.</li>
+        <li>Open the Spotify tab and press <b>Connect</b>. Then import a playlist and press play, with the Spotify desktop app open.</li>
+      </ol>
     </section>
 
     <section id="features">
