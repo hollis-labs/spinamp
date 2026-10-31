@@ -3,7 +3,7 @@
 ## One-time setup
 1. **Repo:** `hollis-labs/spinamp` (public). `.gitignore` already excludes build output, local databases and `inspiration/` (third-party reference images). Licensed MIT (`LICENSE`), with the brand protected by `TRADEMARK.md`.
 2. **Site:** Settings > Pages > Source: *GitHub Actions*; custom domain `spinamp.fm` (the `site/CNAME` file is there). DNS for the apex domain: four A records to GitHub Pages (`185.199.108.153`, `.109.153`, `.110.153`, `.111.153`) and `www` CNAME to `hollis-labs.github.io`. Pushes to `main` that touch `site/` redeploy it.
-3. **Homebrew tap:** `hollis-labs/homebrew-tap` exists (it has a `Formula/` folder). Cask files go in a new `Casks/` folder: put `packaging/homebrew/spinamp.rb` at `Casks/spinamp.rb`. Users then run `brew install --cask hollis-labs/tap/spinamp`.
+3. **Homebrew tap:** `hollis-labs/homebrew-tap` exists (it has a `Formula/` folder). Cask files go in a new `Casks/` folder: put `packaging/homebrew/spinamp.rb` at `Casks/spinamp.rb`. Users then run `brew tap hollis-labs/tap && brew trust hollis-labs/tap && brew install --cask spinamp` (Homebrew 7 requires trusting non-official taps).
 
 ## Cut a release
 1. Bump the version in `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml` and `app/package.json` (keep it plain `x.y.z`: the Windows installer cannot take beta suffixes).

@@ -43,10 +43,10 @@
         </div>
         <div class="pane on" id="mac">
           <h3>Homebrew</h3>
-          <div class="cmd"><code>brew install --cask hollis-labs/tap/spinamp</code><button data-copy>Copy</button></div>
+          <div class="cmd"><code>brew tap hollis-labs/tap &amp;&amp; brew trust hollis-labs/tap &amp;&amp; brew install --cask spinamp</code><button data-copy>Copy</button></div>
           <h3>or one line</h3>
           <div class="cmd"><code>curl -fsSL https://spinamp.fm/install.sh | sh</code><button data-copy>Copy</button></div>
-          <p class="note">macOS 13 or newer on Apple Silicon (Intel Macs aren't supported yet). The installer checks the download against the published checksum. Prefer to read it first? It's <a href="install.sh">short</a>.</p>
+          <p class="note">macOS 13 or newer on Apple Silicon (Intel Macs aren't supported yet). Homebrew 7 asks you to trust third-party taps once; the middle command does that. The installer checks the download against the published checksum. Prefer to read it first? It's <a href="install.sh">short</a>.</p>
         </div>
         <div class="pane" id="win">
           <h3>PowerShell</h3>

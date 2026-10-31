@@ -1,6 +1,6 @@
 # SPINAMP
 
-**Try it:** https://spinamp.fm (macOS: `brew install --cask hollis-labs/tap/spinamp` or `curl -fsSL https://spinamp.fm/install.sh | sh`; Windows: `irm https://spinamp.fm/install.ps1 | iex`). Releases and signing: see [RELEASING.md](RELEASING.md).
+**Try it:** https://spinamp.fm (macOS: `brew tap hollis-labs/tap && brew trust hollis-labs/tap && brew install --cask spinamp` or `curl -fsSL https://spinamp.fm/install.sh | sh`; Windows: `irm https://spinamp.fm/install.ps1 | iex`). Releases and signing: see [RELEASING.md](RELEASING.md).
 
 Playlist-first music player. Tauri 2 + React/TS shell, Rust core, provider adapters (Spotify first).
 
