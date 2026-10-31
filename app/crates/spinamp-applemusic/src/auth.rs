@@ -26,7 +26,7 @@ document.addEventListener('musickitloaded', async()=>{{
   try {{
     const mk=await MusicKit.configure({{developerToken:DEV,app:{{name:'Spinamp',build:'1'}}}});
     b.disabled=false; m.textContent='ready';
-    b.onclick=async()=>{{ try {{ const t=await mk.authorize(); await send({{token:t}}); m.textContent='LINKED. You can close this tab.'; b.disabled=true; }} catch(e) {{ await send({{error:String(e)}}); m.textContent='Not linked: '+e; }} }};
+    b.onclick=async()=>{{ try {{ const t=(await mk.authorize())||mk.musicUserToken; const r=await send({{token:t}}); if(!r.ok) throw new Error('Spinamp did not accept the token ('+r.status+')'); m.textContent='LINKED. You can close this tab.'; b.disabled=true; }} catch(e) {{ await send({{error:String(e)}}); m.textContent='Not linked: '+e; }} }};
   }} catch(e) {{ await send({{error:String(e)}}); m.textContent='MusicKit failed: '+e; }}
 }});
 </script>"#,
@@ -45,33 +45,50 @@ impl Session {
     }
 
     /// Serve the page, wait for the token POST, return the Music User Token.
+    /// Every connection gets its own task: browsers open idle spare connections and would
+    /// otherwise stall the single accept loop (and drop the POST that arrives later).
     pub async fn finish(self) -> Result<String, String> {
-        let deadline = tokio::time::Instant::now() + std::time::Duration::from_secs(300);
-        loop {
-            let (mut sock, _) = tokio::time::timeout_at(deadline, self.listener.accept())
-                .await
-                .map_err(|_| "sign-in timed out".to_string())?
-                .map_err(|e| e.to_string())?;
-            let Some((head, body)) = read_request(&mut sock).await else { continue };
-            let first = head.lines().next().unwrap_or("");
-            if first.starts_with("POST /token") {
-                let _ = sock.write_all(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\n\r\n").await;
-                return parse_token(&body, &self.state);
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<Result<String, String>>();
+        let page: std::sync::Arc<str> = self.page.into();
+        let state: std::sync::Arc<str> = self.state.into();
+        let listener = self.listener;
+        let accept = tokio::spawn(async move {
+            loop {
+                let Ok((sock, _)) = listener.accept().await else { return };
+                let (tx, page, state) = (tx.clone(), page.clone(), state.clone());
+                tokio::spawn(async move { serve(sock, &page, &state, tx).await });
             }
-            let (status, ctype, out) =
-                if first.starts_with("GET / ") { ("200 OK", "text/html; charset=utf-8", self.page.as_str()) } else { ("404 Not Found", "text/plain", "") };
-            let _ = sock
-                .write_all(format!("HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nCache-Control: no-store\r\nContent-Length: {}\r\n\r\n{out}", out.len()).as_bytes())
-                .await;
+        });
+        let r = tokio::time::timeout(std::time::Duration::from_secs(300), rx.recv()).await;
+        accept.abort();
+        match r {
+            Ok(Some(res)) => res,
+            Ok(None) => Err("sign-in was interrupted".into()),
+            Err(_) => Err("sign-in timed out".into()),
         }
     }
+}
+
+async fn serve(mut sock: tokio::net::TcpStream, page: &str, state: &str, tx: tokio::sync::mpsc::UnboundedSender<Result<String, String>>) {
+    let Some((head, body)) = read_request(&mut sock).await else { return };
+    let first = head.lines().next().unwrap_or("");
+    if first.starts_with("POST /token") {
+        let _ = sock.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await;
+        let _ = tx.send(parse_token(&body, state));
+        return;
+    }
+    let (status, ctype, out) =
+        if first.starts_with("GET / ") || first.starts_with("GET /?") { ("200 OK", "text/html; charset=utf-8", page) } else { ("404 Not Found", "text/plain", "") };
+    let _ = sock
+        .write_all(format!("HTTP/1.1 {status}\r\nContent-Type: {ctype}\r\nCache-Control: no-store\r\nConnection: close\r\nContent-Length: {}\r\n\r\n{out}", out.len()).as_bytes())
+        .await;
 }
 
 async fn read_request(sock: &mut tokio::net::TcpStream) -> Option<(String, String)> {
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
-        let n = tokio::time::timeout(std::time::Duration::from_secs(5), sock.read(&mut chunk)).await.ok()?.ok()?;
+        let n = tokio::time::timeout(std::time::Duration::from_secs(60), sock.read(&mut chunk)).await.ok()?.ok()?;
         if n == 0 {
             return None;
         }
@@ -114,6 +131,27 @@ mod tests {
         assert_eq!(parse_token(r#"{"state":"s","token":"T"}"#, "s"), Ok("T".into()));
         assert!(parse_token(r#"{"state":"x","token":"T"}"#, "s").is_err());
         assert!(parse_token(r#"{"state":"s","error":"denied"}"#, "s").unwrap_err().contains("denied"));
+    }
+
+    #[tokio::test]
+    async fn token_arrives_despite_idle_spare_connections_and_a_slow_user() {
+        use tokio::io::AsyncWriteExt;
+        let s = Session::begin("DEV", 0).await.unwrap_or_else(|_| panic!("bind"));
+        let port = s.listener.local_addr().unwrap().port();
+        let state = s.state.clone();
+        let h = tokio::spawn(s.finish());
+        // a spare connection that never sends anything, like a browser's preconnect
+        let _idle = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        let mut get = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        get.write_all(b"GET / HTTP/1.1\r\nHost: x\r\n\r\n").await.unwrap();
+        let mut page = vec![0u8; 8192];
+        let n = tokio::io::AsyncReadExt::read(&mut get, &mut page).await.unwrap();
+        assert!(String::from_utf8_lossy(&page[..n]).contains("musickit.js"));
+        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+        let body = format!(r#"{{"state":"{state}","token":"USERTOKEN"}}"#);
+        let mut post = tokio::net::TcpStream::connect(("127.0.0.1", port)).await.unwrap();
+        post.write_all(format!("POST /token HTTP/1.1\r\nHost: x\r\nContent-Length: {}\r\n\r\n{body}", body.len()).as_bytes()).await.unwrap();
+        assert_eq!(h.await.unwrap(), Ok("USERTOKEN".into()));
     }
 
     #[test]
