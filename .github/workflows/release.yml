@@ -1,7 +1,7 @@
 name: release
 
-# Tag a version (git tag v0.1.0 && git push --tags) to build installers for macOS (Apple Silicon +
-# Intel) and Windows and publish them as a PRERELEASE with a SHA256SUMS file. The install scripts on
+# Tag a version (git tag v0.1.0 && git push --tags) to build installers for macOS (Apple Silicon only:
+# see RELEASING.md) and Windows and publish them as a PRERELEASE with a SHA256SUMS file. The install scripts on
 # spinamp.fm read the newest release, prereleases included.
 on:
   push:
@@ -18,7 +18,6 @@ jobs:
       matrix:
         include:
           - { os: macos-latest, args: "--target aarch64-apple-darwin", targets: "aarch64-apple-darwin" }
-          - { os: macos-15-intel, args: "--target x86_64-apple-darwin", targets: "x86_64-apple-darwin" }
           - { os: windows-latest, args: "", targets: "" }
     runs-on: ${{ matrix.os }}
     steps:

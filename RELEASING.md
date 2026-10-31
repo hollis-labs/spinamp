@@ -7,8 +7,8 @@
 
 ## Cut a release
 1. Bump the version in `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml` and `app/package.json` (keep it plain `x.y.z`: the Windows installer cannot take beta suffixes).
-2. `git tag v0.1.0 && git push --tags`. The `release` workflow builds macOS (Apple Silicon + Intel) and Windows installers, publishes them as a **prerelease**, and adds `SHA256SUMS`.
-3. `packaging/update-cask.sh 0.1.0`, then copy the updated cask into the tap repo and push.
+2. `git tag v0.1.0 && git push --tags`. The `release` workflow builds macOS (Apple Silicon) and Windows installers, publishes them as a **prerelease**, and adds `SHA256SUMS`.
+3. `packaging/update-cask.sh 0.1.0` (Apple Silicon only), then copy the updated cask into the tap repo and push.
 4. The install scripts on spinamp.fm always read the newest release (prereleases included), so nothing else to update.
 
 ## Signing: what it takes
@@ -30,6 +30,7 @@ Once releases are notarized, remove the `postflight` quarantine block from the c
 **Windows.** Unsigned installers show a SmartScreen notice (More info > Run anyway). Removing it needs a code-signing certificate (an OV/EV certificate from a CA, roughly $200-600/year, hardware-token based) or Azure Trusted Signing (about $10/month, with eligibility rules). Not needed for an early beta.
 
 ## Notes
+- **Intel Macs are not built.** The ScreenCaptureKit Swift bridge (`apple-metal`) needs the macOS 26 SDK, which the Intel runner images lack, so the first Intel job failed. A cross-compile of the Intel target on the Apple Silicon runner was staged but not tried; re-add the matrix entry (`os: macos-latest`, `--target x86_64-apple-darwin`) to attempt it.
 - Linux is not built yet (needs the webkit/libsecret toolchain in CI and a capture story).
 - Windows has not been built or run by us yet: the first CI run is the real test, expect to fix a thing or two.
 - Live capture is macOS-only (ScreenCaptureKit); on Windows the app runs without it.

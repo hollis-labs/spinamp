@@ -13,11 +13,13 @@ say() { printf '%s\n' "$*"; }
 die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 [ "$(uname -s)" = "Darwin" ] || die "this installer is for macOS. Windows: see https://spinamp.fm"
-case "$(uname -m)" in
-  arm64) ARCH="aarch64" ;;
-  x86_64) ARCH="x64" ;;
-  *) die "unsupported CPU: $(uname -m)" ;;
-esac
+# Apple Silicon only for now. A terminal running under Rosetta reports x86_64 but is on an ARM Mac.
+if [ "$(uname -m)" = "arm64" ] || [ "$(sysctl -n sysctl.proc_translated 2>/dev/null || echo 0)" = "1" ]; then
+  ARCH="aarch64"
+else
+  die "Intel Macs are not supported yet (Apple Silicon only). Details: https://spinamp.fm"
+fi
+
 
 say "Looking for the latest Spinamp release..."
 JSON="$(curl -fsSL "$API")" || die "could not reach GitHub"
