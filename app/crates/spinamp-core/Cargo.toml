@@ -1,0 +1,15 @@
+[package]
+name = "spinamp-core"
+version = "0.1.0"
+edition = "2024"
+description = "Provider-agnostic playlist, shuffle, discovery and feedback engine for Spinamp"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+async-trait = "0.1"
+thiserror = "2"
+rand = "0.9"
+base64 = "0.22"
+
+[dev-dependencies]
+serde_json = "1"

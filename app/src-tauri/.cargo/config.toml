@@ -1,0 +1,10 @@
+[env]
+MACOSX_DEPLOYMENT_TARGET = { value = "13.0", force = false }
+
+# Sign dev builds with a stable identity so Keychain "Always Allow" survives rebuilds.
+# Harmless without the certificate; see scripts/setup-dev-signing.sh.
+[target.aarch64-apple-darwin]
+runner = "scripts/sign-and-run.sh"
+
+[target.x86_64-apple-darwin]
+runner = "scripts/sign-and-run.sh"

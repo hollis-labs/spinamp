@@ -1,0 +1,107 @@
+name: release
+
+# Tag a version (git tag v0.1.0 && git push --tags) to build installers for macOS (Apple Silicon +
+# Intel) and Windows and publish them as a PRERELEASE with a SHA256SUMS file. The install scripts on
+# spinamp.fm read the newest release, prereleases included.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: macos-latest, args: "--target aarch64-apple-darwin", targets: "aarch64-apple-darwin" }
+          - { os: macos-15-intel, args: "--target x86_64-apple-darwin", targets: "x86_64-apple-darwin" }
+          - { os: windows-latest, args: "", targets: "" }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: app/pnpm-lock.yaml
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.targets }}
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: app/src-tauri -> target
+
+      - name: Install frontend dependencies
+        working-directory: app
+        run: pnpm install --frozen-lockfile
+
+      # Optional macOS signing + notarization. Add the repository secrets listed in RELEASING.md to
+      # turn it on; without them the build is simply unsigned and everything else still works.
+      - name: Detect signing secrets
+        id: sign
+        shell: bash
+        env:
+          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
+        run: echo "enabled=$HAS_CERT" >> "$GITHUB_OUTPUT"
+
+      - name: Export macOS signing environment
+        if: runner.os == 'macOS' && steps.sign.outputs.enabled == 'true'
+        shell: bash
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          {
+            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
+            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
+            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
+            echo "APPLE_ID=$APPLE_ID"
+            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
+            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
+          } >> "$GITHUB_ENV"
+
+      - name: Build, bundle and publish
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: app
+          tagName: ${{ github.ref_name }}
+          releaseName: Spinamp ${{ github.ref_name }}
+          releaseBody: |
+            Early release. See https://spinamp.fm for install commands.
+            Verify downloads against SHA256SUMS.
+          releaseDraft: false
+          prerelease: true
+          args: ${{ matrix.args }}
+
+  checksums:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Publish SHA256SUMS
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          mkdir dl && cd dl
+          gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" \
+            --pattern '*.dmg' --pattern '*-setup.exe' --pattern '*.msi'
+          sha256sum * > SHA256SUMS
+          cat SHA256SUMS
+          gh release upload "${{ github.ref_name }}" SHA256SUMS --clobber --repo "${{ github.repository }}"

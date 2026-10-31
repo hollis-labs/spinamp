@@ -1,0 +1,20 @@
+# build output
+node_modules/
+dist/
+target/
+app/src-tauri/gen/
+
+# local data and machine-specific files
+*.db
+*.db-wal
+*.db-shm
+*.bak-*
+.DS_Store
+.env
+.env.*
+
+# design references (third-party images, not ours to publish)
+inspiration/
+
+# library crates are built through the app; only app/src-tauri/Cargo.lock is tracked
+app/crates/*/Cargo.lock

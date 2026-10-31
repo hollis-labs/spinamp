@@ -1,0 +1,107 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spinamp: a playlist-first music player that learns what you love</title>
+<meta name="description" content="Spinamp is a desktop player for Spotify with smart shuffle, discovery, prompt-to-playlist, lyrics and a visualizer that follows the song. Early release for macOS and Windows.">
+<meta property="og:title" content="Spinamp">
+<meta property="og:description" content="Playlists that learn what you love. Early release for macOS and Windows.">
+<meta property="og:image" content="https://spinamp.fm/hero.png">
+<meta property="og:url" content="https://spinamp.fm">
+<meta name="theme-color" content="#000000">
+<link rel="icon" href="icon.png">
+<link rel="preload" href="doto-latin-700-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <a class="logo" href="/"><img src="icon.png" alt="">SPINAMP</a>
+    <nav><a href="#install">Install</a><a href="#features">Features</a><a href="#privacy">Privacy</a><a href="https://github.com/hollis-labs/spinamp">GitHub</a></nav>
+  </header>
+
+  <main>
+    <span class="tag">Early release</span>
+    <h1>Playlists that<br>learn what you love</h1>
+    <p class="lede">Spinamp is a playlist-first desktop player for Spotify. Smart shuffle that remembers your thumbs, discovery of artists you'd like, playlists built from a sentence, synced lyrics, and a visualizer that follows the actual song.</p>
+    <div class="cta">
+      <a class="btn primary" href="#install">Install</a>
+      <a class="btn" href="https://github.com/hollis-labs/spinamp">View on GitHub</a>
+    </div>
+    <p class="note" style="margin-top:-22px;margin-bottom:34px">Free and open source under the <a href="https://github.com/hollis-labs/spinamp/blob/main/LICENSE">MIT license</a>.</p>
+
+    <div class="shot-wrap"><div class="shot"><img src="hero.gif" alt="Spinamp playing a track: a four-colour equalizer, the song's shape across its length, and a playlist table with key, energy and play counts" width="780" height="816"></div></div>
+
+    <section id="install">
+      <h2>Try it</h2>
+      <p class="sub">Needs Spotify Premium and the Spotify desktop app. Spinamp controls it, so your music keeps playing through Spotify.</p>
+      <div class="install">
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-pane="mac">macOS</button>
+          <button role="tab" aria-selected="false" data-pane="win">Windows</button>
+        </div>
+        <div class="pane on" id="mac">
+          <h3>Homebrew</h3>
+          <div class="cmd"><code>brew install --cask hollis-labs/tap/spinamp</code><button data-copy>Copy</button></div>
+          <h3>or one line</h3>
+          <div class="cmd"><code>curl -fsSL https://spinamp.fm/install.sh | sh</code><button data-copy>Copy</button></div>
+          <p class="note">macOS 13 or newer, Apple Silicon or Intel. The installer checks the download against the published checksum. Prefer to read it first? It's <a href="install.sh">short</a>.</p>
+        </div>
+        <div class="pane" id="win">
+          <h3>PowerShell</h3>
+          <div class="cmd"><code>irm https://spinamp.fm/install.ps1 | iex</code><button data-copy>Copy</button></div>
+          <p class="note">Windows 10 or 11. Early releases aren't code-signed yet, so SmartScreen may show a notice: choose More info, then Run anyway. Windows support is newer and less tested; live capture is macOS-only for now. <a href="install.ps1">Read the script</a>.</p>
+        </div>
+      </div>
+      <p class="note" style="margin-top:14px">Or grab the installers directly from <a href="https://github.com/hollis-labs/spinamp/releases">GitHub Releases</a>.</p>
+    </section>
+
+    <section id="features">
+      <h2>What's inside</h2>
+      <p class="sub">Built around playlists, and around knowing your music.</p>
+      <div class="grid">
+        <div class="card"><h3>Shuffle that listens</h3><p>Thumbs up and down count more the more you repeat them, fade with time, and a thumbs-down cools a track off. Favorites run hotter. Mute a song for a day, a week or a month, or block an artist or genre for good.</p></div>
+        <div class="card"><h3>Discovery</h3><p>Finds artists like the ones you love, checks they're playable, and mixes them in at a ratio you choose. Vote on a discovery and it joins your library.</p></div>
+        <div class="card"><h3>Playlists from a sentence</h3><p>"45 minute chill commute, no loud spikes." Built from your own library to the exact length, using tags, tempo, energy and mood. AI is optional and uses your own key.</p></div>
+        <div class="card"><h3>A visualizer that follows the song</h3><p>Four colour layers across the spectrum. With live capture (macOS, opt-in) it hears the Spotify app and remembers each song's shape, which fills in a timeline of the whole track.</p></div>
+        <div class="card"><h3>Lyrics and artist info</h3><p>Time-synced lyrics when they exist, plus a panel with the artist's bio, members and links.</p></div>
+        <div class="card"><h3>Knows your tracks</h3><p>Tempo, key, mood and loudness measured on your machine. Plays versus real listens, ignoring the hours you leave it running overnight.</p></div>
+      </div>
+    </section>
+
+    <section id="privacy">
+      <h2>Private by design</h2>
+      <p class="sub">Your library is yours.</p>
+      <div class="privacy">
+        <p>No account, no tracking. Your library, votes and listening history live in a local database. Sign-in tokens and any AI key are kept in your system keychain. Spinamp talks only to Spotify and a few public music-data services (MusicBrainz, ListenBrainz, LRCLIB, Deezer, Wikipedia), and to the AI provider if you turn that on with your own key.</p>
+        <p>Live capture is off until you say so. It hears only the Spotify app, turns audio into a few numbers every 50 ms, and discards the audio immediately. Sharing those song fingerprints with the community database is a separate, opt-in choice, and nothing is shared yet.</p>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p>Spinamp is an independent project by Hollis Labs and is not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB.</p>
+    <p>The code is MIT-licensed. The Spinamp name and logo are trademarks of Hollis Labs (<a href="https://github.com/hollis-labs/spinamp/blob/main/TRADEMARK.md">trademark policy</a>).</p>
+    <p><a href="https://github.com/hollis-labs/spinamp">Source and issues on GitHub</a></p>
+  </footer>
+</div>
+
+<script>
+  document.querySelectorAll('.tabs button').forEach(function (b) {
+    b.addEventListener('click', function () {
+      document.querySelectorAll('.tabs button').forEach(function (x) { x.setAttribute('aria-selected', x === b ? 'true' : 'false'); });
+      document.querySelectorAll('.pane').forEach(function (p) { p.classList.toggle('on', p.id === b.dataset.pane); });
+    });
+  });
+  // pick the Windows tab by default on Windows
+  if (/Win/i.test(navigator.platform)) document.querySelector('[data-pane="win"]').click();
+  document.querySelectorAll('[data-copy]').forEach(function (b) {
+    b.addEventListener('click', function () {
+      var text = b.parentElement.querySelector('code').textContent;
+      navigator.clipboard.writeText(text).then(function () { b.textContent = 'Copied'; setTimeout(function () { b.textContent = 'Copy'; }, 1500); });
+    });
+  });
+</script>
+</body>
+</html>
