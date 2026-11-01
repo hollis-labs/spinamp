@@ -21,14 +21,29 @@ button{{background:#ffd23a;border:0;padding:14px 22px;font:inherit;font-weight:7
 <script>
 const STATE={state:?}, DEV={dev:?};
 const m=document.getElementById('m'), b=document.getElementById('b');
+const log=(x)=>{{ m.textContent=x; }};
 const send=(o)=>fetch('/token',{{method:'POST',body:JSON.stringify(Object.assign({{state:STATE}},o))}});
+async function deliver(mk, t) {{
+  const r=await send({{token:t}});
+  if(!r.ok) throw new Error('Spinamp did not accept the token ('+r.status+')');
+  log('LINKED. You can close this tab and go back to Spinamp.'); b.disabled=true;
+}}
 document.addEventListener('musickitloaded', async()=>{{
   try {{
     const mk=await MusicKit.configure({{developerToken:DEV,app:{{name:'Spinamp',build:'1'}}}});
-    b.disabled=false; m.textContent='ready';
-    b.onclick=async()=>{{ try {{ const t=(await mk.authorize())||mk.musicUserToken; const r=await send({{token:t}}); if(!r.ok) throw new Error('Spinamp did not accept the token ('+r.status+')'); m.textContent='LINKED. You can close this tab.'; b.disabled=true; }} catch(e) {{ await send({{error:String(e)}}); m.textContent='Not linked: '+e; }} }};
-  }} catch(e) {{ await send({{error:String(e)}}); m.textContent='MusicKit failed: '+e; }}
+    // Apple sometimes finishes sign-in by redirecting back to this page instead of a popup:
+    // the token is then already stored, so hand it over without another click.
+    if (mk.isAuthorized && mk.musicUserToken) {{ log('already signed in, sending to Spinamp…'); await deliver(mk, mk.musicUserToken); return; }}
+    b.disabled=false; log('ready');
+    b.onclick=async()=>{{ try {{
+      log('waiting for Apple…');
+      const t=(await mk.authorize())||mk.musicUserToken;
+      if(!t) throw new Error('Apple returned no token');
+      await deliver(mk, t);
+    }} catch(e) {{ await send({{error:String(e)}}); log('Not linked: '+e); }} }};
+  }} catch(e) {{ await send({{error:String(e)}}); log('MusicKit failed: '+e); }}
 }});
+window.addEventListener('error',(e)=>log('page error: '+e.message));
 </script>"#,
         state = state,
         dev = dev_token,
@@ -72,9 +87,12 @@ impl Session {
 async fn serve(mut sock: tokio::net::TcpStream, page: &str, state: &str, tx: tokio::sync::mpsc::UnboundedSender<Result<String, String>>) {
     let Some((head, body)) = read_request(&mut sock).await else { return };
     let first = head.lines().next().unwrap_or("");
+    eprintln!("[applemusic sign-in] {first} ({} body bytes)", body.len());
     if first.starts_with("POST /token") {
         let _ = sock.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await;
-        let _ = tx.send(parse_token(&body, state));
+        let res = parse_token(&body, state);
+        eprintln!("[applemusic sign-in] token post: {}", if res.is_ok() { "accepted".to_string() } else { format!("{res:?}") });
+        let _ = tx.send(res);
         return;
     }
     let (status, ctype, out) =
