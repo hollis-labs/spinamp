@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import * as Ic from "./Icons";
 
 type S = {
-  spotify_client_id: string; callback_port: number; preferred_provider: string;
+  spotify_client_id: string; callback_port: number; preferred_provider: string; lastfm_user: string;
   ai_enabled: boolean; ai_model: string;
   discovery_ratio: number; discovery_sharpness: number;
   listen_threshold: number; quiet_enabled: boolean; quiet_start: number; quiet_end: number;
@@ -44,6 +44,9 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [cat, setCat] = useState<Catalog | null>(null);
   const [conn, setConn] = useState<Conn | null>(null);
   const [am, setAm] = useState<Conn | null>(null);
+  const [lf, setLf] = useState<{ key_set: boolean; user: string } | null>(null);
+  const [lfKey, setLfKey] = useState("");
+  const [lfVotes, setLfVotes] = useState(true);
   const [amKey, setAmKey] = useState({ source: "", keyId: "", teamId: "" });
   const [an, setAn] = useState<Analysis | null>(null);
   const [del, setDel] = useState<Deleted | null>(null);
@@ -52,7 +55,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [capMsg, setCapMsg] = useState("");
 
   const load = async () => { const r = await invoke<View>("get_settings"); setV(r); setS(r.settings); };
-  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Conn>("provider_status", { id: "applemusic" }).then(setAm); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
+  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Conn>("provider_status", { id: "applemusic" }).then(setAm); invoke<{ key_set: boolean; user: string }>("lastfm_status").then(setLf); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
   useEffect(() => {
     if (!cat?.running) return;
     const id = setInterval(async () => setCat(await invoke<Catalog>("catalog_status")), 2000);
@@ -112,6 +115,26 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             setAm(await invoke<Conn>("provider_status", { id: "applemusic" }));
             return "KEY SAVED. NOW CONNECT IN THE SOURCES TAB";
           })}>SAVE KEY</button>
+        </Row>
+
+        <h3>LAST.FM</h3>
+        <Row label="Account" hint="Free: create an API account at last.fm/api/account/create, then paste the API key here with your username. Read-only: Spinamp never writes to Last.fm. Similar-artist data improves Discovery.">
+          <input className="inp short" value={s.lastfm_user} onChange={(e) => set("lastfm_user", e.target.value)} placeholder="username" autoComplete="off" />
+          <input className="inp" type="password" value={lfKey} onChange={(e) => setLfKey(e.target.value)} placeholder={lf?.key_set ? "•••••••• (saved)" : "API key"} autoComplete="off" />
+          <button className="btn" disabled={!lfKey.trim()} onClick={() => act(async () => { await invoke("set_lastfm_key", { key: lfKey }); setLfKey(""); setLf(await invoke("lastfm_status")); return "KEY SAVED"; })}>SAVE KEY</button>
+          {lf?.key_set && <button className="btn bad" onClick={() => act(async () => { await invoke("clear_lastfm_key"); setLf(await invoke("lastfm_status")); return "KEY REMOVED"; })}>REMOVE</button>}
+          <button className="btn" disabled={!lf?.key_set || !s.lastfm_user.trim()} onClick={() => act(async () => { setV(await invoke<View>("save_settings", { settings: s })); return await invoke<string>("lastfm_test", { user: s.lastfm_user }); })}>TEST</button>
+        </Row>
+        <Row label="Import" hint="Matches your scrobbles and loved tracks to songs already in your library (plays are backfilled with their real dates, repeats are skipped). Big histories take a few minutes.">
+          {([["scrobbles", "SCROBBLES"], ["loved", "LOVED"], ["artists", "TOP ARTISTS"], ["all", "EVERYTHING"]] as const).map(([k, label]) => (
+            <button key={k} className="btn" disabled={!lf?.key_set || !s.lastfm_user.trim()} onClick={() => act(async () => {
+              setMsg(`IMPORTING ${label}...`);
+              return "IMPORTED: " + (await invoke<string>("lastfm_import", { user: s.lastfm_user, kind: k, votes: lfVotes })).toUpperCase();
+            })}>{label}</button>
+          ))}
+          <label className="pill" style={{ height: 26, fontSize: 11 }}>
+            <input type="checkbox" checked={lfVotes} onChange={(e) => setLfVotes(e.target.checked)} style={{ accentColor: "var(--orange)" }} /> LOVED = +1
+          </label>
         </Row>
 
         <h3>AI</h3>

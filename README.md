@@ -38,13 +38,18 @@ Create an app at developer.spotify.com, add redirect `http://127.0.0.1:43821/cal
 Prefs are stored in sqlite (`kv.settings`). The AI key goes in the OS keychain (macOS Keychain; Credential Manager / Secret Service elsewhere) and is never returned to the UI. Spotify tokens are still in sqlite; moving them to the keychain is open.
 
 ## Discovery catalog
-seeds = library artists you like (weighted by feedback) -> ListenBrainz similar artists (public, by MusicBrainz id) -> drop artists you own or already queued -> Spotify search for their tracks -> MusicBrainz tags -> `candidates` table. Tops up automatically when the pool drops under 20; voting on a discovery track adds it to the library.
+seeds = library artists you like (weighted by feedback) -> similar artists from Last.fm (by name, with your key) and ListenBrainz (public, by MusicBrainz id) -> drop artists you own or already queued -> Spotify search for their tracks -> MusicBrainz tags -> `candidates` table. Tops up automatically when the pool drops under 20; voting on a discovery track adds it to the library.
 
 ## Lyrics, artist panel, Spotify history
 - Lyrics: LRCLIB (free, keyless), synced when available, cached (hits forever, misses 7 days).
 - Artist panel: Wikipedia summary + MusicBrainz links/members + Deezer fans/photo; cached 30 days.
 - Spotify import (SPOTIFY tab): Liked Songs (optionally +1, dated when you saved them), Top Tracks (3 ranges), Recently Played (also backfills plays), Top Artists (discovery seeds, never recommended back). Needs the extra scopes: press RECONNECT once.
 - Not available from Spotify any more: audio features, recommendations, related artists, artist top tracks. ReccoBeats (audio features by Spotify id) was down when tried; revisit for tempo/energy.
+
+## Apple Music, merging, Last.fm
+- Apple Music: bring your own MusicKit key (Settings > Apple Music: path to the `.p8`, Key ID, Team ID), then CONNECT in the SOURCES tab. Playback controls the Music app (macOS) and only plays songs that are in your library.
+- A song on several services (same ISRC) is one row; Settings > Playback chooses which service plays it.
+- Last.fm (read-only, your own API key + username): similar artists feed Discovery, and Settings can import scrobbles (matched to songs you own, backfilled with real dates), loved tracks and top artists.
 
 ## Provider credentials
 Tokens are stored in the OS keychain under `cred:<provider>` (opaque blob per provider; the adapter decides the contents), with a sqlite fallback if the keychain refuses. The `MusicProvider` trait has `credentials()`, `restore_credentials()` and `disconnect()`, so Apple Music / YouTube / Amazon adapters plug in without app changes. Old sqlite tokens are migrated automatically.

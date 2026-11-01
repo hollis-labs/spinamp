@@ -11,6 +11,24 @@ pub fn isrc_of(t: &Track) -> Option<String> {
     (!i.is_empty()).then_some(i)
 }
 
+/// A key that matches the same song across services and scrobble logs: title without
+/// "(Remastered)" / "- Live" style suffixes, plus the primary artist, letters and digits only.
+pub fn match_key(title: &str, artist: &str) -> String {
+    let mut base = String::new();
+    let mut depth = 0u32;
+    for c in title.chars() {
+        match c {
+            '(' | '[' => depth += 1,
+            ')' | ']' => depth = depth.saturating_sub(1),
+            _ if depth == 0 => base.push(c),
+            _ => {}
+        }
+    }
+    let base = base.split(" - ").next().unwrap_or("");
+    let alnum = |s: &str| s.chars().filter(|c| c.is_alphanumeric()).flat_map(|c| c.to_lowercase()).collect::<String>();
+    format!("{}|{}", alnum(base), alnum(crate::primary_artist(artist)))
+}
+
 /// Fold same-ISRC rows together. Order follows each recording's first appearance.
 pub fn merge_by_isrc(states: Vec<TrackState>) -> Vec<TrackState> {
     let mut out: Vec<TrackState> = Vec::with_capacity(states.len());
@@ -141,6 +159,14 @@ mod tests {
         let m = merge_by_isrc(vec![a, b]).remove(0);
         assert_eq!((m.play_count, m.votes.votes().len(), m.favorite, m.rating, m.muted_until, m.last_played), (5, 2, true, Some(4), Some(999), Some(80)));
         assert_eq!((m.track.tempo, m.track.tags.as_slice()), (Some(120.0), &["shoegaze".to_string()][..]));
+    }
+
+    #[test]
+    fn match_key_ignores_suffixes_case_and_featured_artists() {
+        let k = match_key("Alison (Remastered 2005)", "Slowdive");
+        assert_eq!(k, match_key("ALISON", "slowdive"));
+        assert_eq!(k, match_key("Alison - 2010 Remaster", "Slowdive, Guest"));
+        assert_ne!(k, match_key("Souvlaki Space Station", "Slowdive"));
     }
 
     #[test]

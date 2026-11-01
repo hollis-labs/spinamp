@@ -1,7 +1,8 @@
 //! Discovery catalog: finds playable tracks by artists you do not own.
 //!
 //! seeds (library artists you like, weighted by feedback)
-//!   -> ListenBrainz "similar artists" (public, keyed by MusicBrainz id from tag enrichment)
+//!   -> similar artists: Last.fm (by name, needs your API key) and ListenBrainz (public, keyed by
+//!      the MusicBrainz id from tag enrichment); both are used when available
 //!   -> drop artists you already own or already queued
 //!   -> Spotify search for each new artist's tracks
 //!   -> MusicBrainz tags for them, so taste matching has signal
@@ -94,6 +95,7 @@ async fn refill(handle: &AppHandle) -> Result<usize, String> {
     let state = handle.state::<Shared>();
 
     // 1. snapshot what we need, then release the lock before any network call
+    let lf = crate::lastfm::client();
     let (sp, mut seeds, mut owned, have, contact, top, blocks) = {
         let a = state.lock().unwrap();
         let (n, fb) = (now(), &a.cfg.shuffle.feedback);
@@ -104,10 +106,14 @@ async fn refill(handle: &AppHandle) -> Result<usize, String> {
             owned.insert(name.to_lowercase());
             *weight.entry(name).or_default() += t.votes.score(n, fb) + 0.25;
         }
-        let seeds: Vec<(String, f64, String)> = weight
+        // Last.fm looks artists up by name, so every liked artist can seed; ListenBrainz needs an mbid.
+        let seeds: Vec<(String, f64, Option<String>)> = weight
             .into_iter()
             .filter(|(_, w)| *w > 0.0)
-            .filter_map(|(name, w)| a.store.artist_mbid(&name).ok().flatten().map(|m| (name, w, m)))
+            .filter_map(|(name, w)| {
+                let m = a.store.artist_mbid(&name).ok().flatten();
+                (m.is_some() || lf.is_some()).then_some((name, w, m))
+            })
             .collect();
         let top: Vec<String> = a.store.kv_get("top_artists").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
         (a.spotify.clone(), seeds, owned, a.store.candidate_artists().unwrap_or_default(), a.settings.contact(), top, a.blocklist.clone())
@@ -135,41 +141,62 @@ async fn refill(handle: &AppHandle) -> Result<usize, String> {
             }
             None => None,
         };
-        if let Some(m) = mbid {
-            if !seeds.iter().any(|s| s.0.eq_ignore_ascii_case(name)) {
-                seeds.push((name.clone(), 2.0 * (1.0 - 0.6 * rank as f64 / top.len().max(1) as f64), m));
-            }
+        if (mbid.is_some() || lf.is_some()) && !seeds.iter().any(|s| s.0.eq_ignore_ascii_case(name)) {
+            seeds.push((name.clone(), 2.0 * (1.0 - 0.6 * rank as f64 / top.len().max(1) as f64), mbid));
         }
     }
     if seeds.is_empty() {
-        return Err("No tagged artists yet. Let tag enrichment finish, then try again.".into());
+        return Err("No tagged artists yet. Let tag enrichment finish (or add a Last.fm key in Settings), then try again.".into());
     }
 
     // 2. choose seeds (weighted, different every run)
     let mut rng = StdRng::from_os_rng();
-    let by_name: HashMap<&str, (&f64, &String)> = seeds.iter().map(|(n, w, m)| (n.as_str(), (w, m))).collect();
+    let by_name: HashMap<&str, (&f64, &Option<String>)> = seeds.iter().map(|(n, w, m)| (n.as_str(), (w, m))).collect();
     let chosen = weighted_sample(&seeds.iter().map(|(n, w, _)| (n.clone(), *w)).collect::<Vec<_>>(), SEEDS_PER_RUN, &mut rng);
 
     // 3. similar artists per seed (cached 30 days)
     let mut lists: Vec<(f64, Vec<(String, f64)>)> = vec![];
     for name in &chosen {
         let (w, mbid) = by_name[name.as_str()];
-        let key = format!("lb:{mbid}");
-        let cached: Option<(i64, Vec<(String, f64)>)> =
-            state.lock().unwrap().store.kv_get(&key).ok().flatten().and_then(|j| serde_json::from_str(&j).ok());
-        let list = match cached {
-            Some((at, l)) if now() - at < CACHE_SECS => l,
-            _ => {
-                let l: Vec<(String, f64)> = match listenbrainz::similar_artists(mbid).await {
-                    Ok(s) => s.into_iter().map(|x| (x.name, x.score)).collect(),
-                    Err(_) => continue,
-                };
-                let _ = state.lock().unwrap().store.kv_set(&key, &serde_json::to_string(&(now(), &l)).unwrap());
-                tokio::time::sleep(std::time::Duration::from_millis(400)).await;
-                l
+        if let Some(mbid) = mbid {
+            let key = format!("lb:{mbid}");
+            let cached: Option<(i64, Vec<(String, f64)>)> =
+                state.lock().unwrap().store.kv_get(&key).ok().flatten().and_then(|j| serde_json::from_str(&j).ok());
+            let list = match cached {
+                Some((at, l)) if now() - at < CACHE_SECS => Some(l),
+                _ => match listenbrainz::similar_artists(mbid).await {
+                    Ok(s) => {
+                        let l: Vec<(String, f64)> = s.into_iter().map(|x| (x.name, x.score)).collect();
+                        let _ = state.lock().unwrap().store.kv_set(&key, &serde_json::to_string(&(now(), &l)).unwrap());
+                        tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                        Some(l)
+                    }
+                    Err(_) => None,
+                },
+            };
+            if let Some(l) = list {
+                lists.push((*w, l));
             }
-        };
-        lists.push((*w, list));
+        }
+        if let Some(lf) = &lf {
+            let key = format!("lf:{}", name.to_lowercase());
+            let cached: Option<(i64, Vec<(String, f64)>)> =
+                state.lock().unwrap().store.kv_get(&key).ok().flatten().and_then(|j| serde_json::from_str(&j).ok());
+            let list = match cached {
+                Some((at, l)) if now() - at < CACHE_SECS => Some(l),
+                _ => match lf.similar_artists(name, 50).await {
+                    Ok(l) => {
+                        let _ = state.lock().unwrap().store.kv_set(&key, &serde_json::to_string(&(now(), &l)).unwrap());
+                        tokio::time::sleep(std::time::Duration::from_millis(250)).await;
+                        Some(l)
+                    }
+                    Err(_) => None,
+                },
+            };
+            if let Some(l) = list {
+                lists.push((*w, l));
+            }
+        }
     }
 
     // 4. rank artists we do not own and have not queued, then sample a handful

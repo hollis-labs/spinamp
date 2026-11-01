@@ -465,6 +465,23 @@ impl Store {
 
     /// Backfill plays from Spotify's history. Idempotent on (track, timestamp). Counts as plays,
     /// not listens (we cannot know how much of each was heard).
+    /// Backfill plays from Last.fm scrobbles. A scrobble means at least half the track played, so
+    /// these count as listens. Idempotent on (track, timestamp).
+    pub fn add_scrobbles(&self, items: &[(TrackId, Ts, u64)]) -> Result<usize> {
+        let tx = self.db.unchecked_transaction()?;
+        let mut n = 0;
+        for (id, at, dur) in items {
+            n += self.db.execute(
+                "INSERT INTO play_events(track_id, started_at, listened_ms, duration_ms, ended_by, mode, trigger)
+                 SELECT ?1, ?2, ?3 / 2, ?3, 'history', 'history', 'lastfm'
+                 WHERE NOT EXISTS (SELECT 1 FROM play_events WHERE track_id = ?1 AND started_at = ?2)",
+                params![id.0, at, dur],
+            )?;
+        }
+        tx.commit()?;
+        Ok(n)
+    }
+
     pub fn add_history_plays(&self, items: &[(TrackId, Ts, u64)]) -> Result<usize> {
         let tx = self.db.unchecked_transaction()?;
         let mut n = 0;
@@ -866,6 +883,17 @@ mod tests {
         let merged = spinamp_core::merge::merge_by_isrc(raw);
         assert_eq!(merged.len(), 1);
         assert_eq!((merged[0].track.id.0.as_str(), merged[0].alts.len(), merged[0].votes.votes().len()), ("spotify:1", 1, 2));
+    }
+
+    #[test]
+    fn scrobbles_import_once_and_count_as_listens() {
+        let s = Store::memory().unwrap();
+        s.add_track(&track("1"), 10).unwrap();
+        let id = TrackId::new("spotify", "1");
+        assert_eq!(s.add_scrobbles(&[(id.clone(), 100, 1000), (id.clone(), 200, 1000)]).unwrap(), 2);
+        assert_eq!(s.add_scrobbles(&[(id.clone(), 100, 1000)]).unwrap(), 0, "same timestamp is not added twice");
+        let ev = s.play_events().unwrap();
+        assert_eq!((ev.len(), ev[0].listened_ms), (2, 500));
     }
 
     #[test]

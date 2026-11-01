@@ -3,6 +3,7 @@ mod capture;
 mod catalog;
 mod credentials;
 mod extras;
+mod lastfm;
 mod settings;
 
 use rand::rngs::StdRng;
@@ -1354,7 +1355,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .manage(Mutex::new(state))
-        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, provider_connect, applemusic_set_key, provider_list, provider_status, provider_disconnect, provider_playlists, provider_preview, analysis_status, analysis_start, analysis_stop, viz_pattern, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
+        .invoke_handler(tauri::generate_handler![mute_track, set_favorite, remove_track_everywhere, list_blocks, add_block, remove_block, tempo_reconcile, set_tempo, playback_seek, capture_answer, capture::capture_check, capture::capture_status, capture::viz_capture, analysis_reset, library, sort_library, next_track, vote, lastfm::lastfm_status, lastfm::set_lastfm_key, lastfm::clear_lastfm_key, lastfm::lastfm_test, lastfm::lastfm_import, provider_connect, applemusic_set_key, provider_list, provider_status, provider_disconnect, provider_playlists, provider_preview, analysis_status, analysis_start, analysis_stop, viz_pattern, extras::lyrics, extras::artist_profile, extras::spotify_import_history, get_settings, save_settings, set_ai_key, clear_ai_key, test_ai, catalog_status, catalog_refill, vote_track, enrich_start, enrich_stop, enrich_status, ai_enabled, generate_playlist, play_track, poll_playback, play_log, set_tz_offset, playback_pause, playback_resume, library_count, import_tracks, import_playlist, local_playlists, deleted_counts, restore_deleted, create_playlist, add_to_playlist, remove_from_playlist, select_playlist, delete_playlist, search, add_to_library])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
