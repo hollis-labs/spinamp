@@ -32,7 +32,7 @@ export default function ColumnPicker({ cols, visible, onToggle, onReset }: Props
           <div className="colrow dim">TITLE and actions are always shown</div>
           {cols.map((c) => (
             <label className="colrow" key={c.id}>
-              <input type="checkbox" checked={visible.has(c.id)} onChange={() => onToggle(c.id)} style={{ accentColor: "var(--orange)" }} />
+              <input type="checkbox" checked={visible.has(c.id)} onChange={() => onToggle(c.id)} style={{ accentColor: "var(--accent)" }} />
               <span>{c.full}</span>
             </label>
           ))}

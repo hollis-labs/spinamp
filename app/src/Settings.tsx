@@ -135,7 +135,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
             })}>{label}</button>
           ))}
           <label className="pill" style={{ height: 26, fontSize: 11 }}>
-            <input type="checkbox" checked={lfVotes} onChange={(e) => setLfVotes(e.target.checked)} style={{ accentColor: "var(--orange)" }} /> LOVED = +1
+            <input type="checkbox" checked={lfVotes} onChange={(e) => setLfVotes(e.target.checked)} style={{ accentColor: "var(--accent)" }} /> LOVED = +1
           </label>
         </Row>
 

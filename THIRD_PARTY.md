@@ -17,7 +17,7 @@ Spinamp is built on open-source software. The main pieces, and how they are lice
 Dependency licenses can be listed with `cargo license` (Rust) and `pnpm licenses list` (JavaScript).
 
 ## Fonts (SIL Open Font License 1.1)
-Doto, Chakra Petch, Share Tech Mono and JetBrains Mono, bundled via [Fontsource](https://fontsource.org).
+Doto, Chakra Petch and JetBrains Mono, bundled via [Fontsource](https://fontsource.org).
 The OFL permits bundling and redistribution; the fonts are not sold on their own.
 
 ## Data sources

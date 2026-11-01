@@ -593,7 +593,7 @@ export default function App() {
         ) : <div className="seek" />}
         <div className="deck">
           <div className="group">
-            <button className="btn primary play" onClick={toggle} title={playing ? "Pause" : "Play"}>{playing ? <Ic.Pause /> : <Ic.Play />}</button>
+            <button className="btn primary icon" onClick={toggle} title={playing ? "Pause" : "Play"}>{playing ? <Ic.Pause /> : <Ic.Play />}</button>
             <button className="btn icon" onClick={skip} title="Skip"><Ic.Next /></button>
           </div>
           <span className="divider" />
@@ -772,7 +772,7 @@ export default function App() {
               })}>{label}</button>
             ))}
             <label className="pill" style={{ height: 26, fontSize: 11 }}>
-              <input type="checkbox" checked={likesCount} onChange={(e) => setLikesCount(e.target.checked)} style={{ accentColor: "var(--orange)" }} /> LIKED = +1
+              <input type="checkbox" checked={likesCount} onChange={(e) => setLikesCount(e.target.checked)} style={{ accentColor: "var(--accent)" }} /> LIKED = +1
             </label>
           </div>
         )}
