@@ -11,6 +11,7 @@ Spinamp is built on open-source software. The main pieces, and how they are lice
 | [rusqlite](https://github.com/rusqlite/rusqlite) / SQLite | local database | MIT / public domain |
 | [reqwest](https://github.com/seanmonstar/reqwest), tokio | networking | MIT or Apache-2.0 |
 | [keyring](https://github.com/hwchen/keyring-rs) | system keychain access | MIT or Apache-2.0 |
+| [jsonwebtoken](https://github.com/Keats/jsonwebtoken) | signing Apple MusicKit tokens | MIT |
 | [screencapturekit](https://github.com/doom-fish/screencapturekit-rs) | macOS live capture | MIT or Apache-2.0 |
 
 Dependency licenses can be listed with `cargo license` (Rust) and `pnpm licenses list` (JavaScript).
@@ -20,7 +21,8 @@ Doto, Chakra Petch, Share Tech Mono and JetBrains Mono, bundled via [Fontsource]
 The OFL permits bundling and redistribution; the fonts are not sold on their own.
 
 ## Data sources
-Spinamp queries these public services at your request: Spotify Web API (your own account),
-MusicBrainz, ListenBrainz, LRCLIB, lyrics.ovh, Deezer, iTunes Search and Wikipedia. Their content
+Spinamp queries these public services at your request: Spotify Web API and Apple Music API (your own accounts),
+MusicBrainz, ListenBrainz, LRCLIB, lyrics.ovh, Deezer, iTunes Search and Wikipedia, and Last.fm and Discogs with
+your own API keys. Their content
 belongs to its respective owners and is subject to their terms. Spinamp stores only derived numbers
 from audio previews (tempo, key, loudness, spectrum fingerprints), never the audio itself.

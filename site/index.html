@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Spinamp: a playlist-first music player that learns what you love</title>
-<meta name="description" content="Spinamp is a desktop player for Spotify with smart shuffle, discovery, prompt-to-playlist, lyrics and a visualizer that follows the song. Early release for Apple Silicon Macs and Windows.">
+<meta name="description" content="Spinamp is a desktop player for Spotify and Apple Music with smart shuffle, discovery, prompt-to-playlist, lyrics and a visualizer that follows the song. Early release for Apple Silicon Macs and Windows.">
 <meta property="og:title" content="Spinamp">
 <meta property="og:description" content="Playlists that learn what you love. Early release for Apple Silicon Macs and Windows.">
 <meta property="og:image" content="https://spinamp.fm/hero.png">
@@ -24,7 +24,7 @@
   <main>
     <span class="tag">Early release</span>
     <h1>Playlists that<br>learn what you love</h1>
-    <p class="lede">Spinamp is a playlist-first desktop player for Spotify. Smart shuffle that remembers your thumbs, discovery of artists you'd like, playlists built from a sentence, synced lyrics, and a visualizer that follows the actual song.</p>
+    <p class="lede">Spinamp is a playlist-first desktop player for Spotify and Apple Music. Smart shuffle that remembers your thumbs, discovery of artists you'd like, playlists built from a sentence, synced lyrics, and a visualizer that follows the actual song.</p>
     <div class="cta">
       <a class="btn primary" href="#install">Install</a>
       <a class="btn" href="https://github.com/hollis-labs/spinamp">View on GitHub</a>
@@ -74,6 +74,8 @@
         <div class="card"><h3>Playlists from a sentence</h3><p>"45 minute chill commute, no loud spikes." Built from your own library to the exact length, using tags, tempo, energy and mood. AI is optional and uses your own key.</p></div>
         <div class="card"><h3>A visualizer that follows the song</h3><p>Four colour layers across the spectrum. With live capture (macOS, opt-in) it hears the Spotify app and remembers each song's shape, which fills in a timeline of the whole track.</p></div>
         <div class="card"><h3>Lyrics and artist info</h3><p>Time-synced lyrics when they exist, plus a panel with the artist's bio, members and links.</p></div>
+        <div class="card"><h3>More than one service</h3><p>Mix Spotify and Apple Music in one playlist. The same song on both shows once and plays from the service you prefer. Apple Music is an advanced setup: it needs your own MusicKit key from an Apple Developer account, and plays through the Music app on a Mac.</p></div>
+        <div class="card"><h3>Credits and history</h3><p>Optional Last.fm and Discogs keys add similar-artist discovery, scrobble history import, and labels, pressings and per-song credits. All read-only.</p></div>
         <div class="card"><h3>Knows your tracks</h3><p>Tempo, key, mood and loudness measured on your machine. Plays versus real listens, ignoring the hours you leave it running overnight.</p></div>
       </div>
     </section>
@@ -82,14 +84,14 @@
       <h2>Private by design</h2>
       <p class="sub">Your library is yours.</p>
       <div class="privacy">
-        <p>No account, no tracking. Your library, votes and listening history live in a local database. Sign-in tokens and any AI key are kept in your system keychain. Spinamp talks only to Spotify and a few public music-data services (MusicBrainz, ListenBrainz, LRCLIB, Deezer, Wikipedia), and to the AI provider if you turn that on with your own key.</p>
+        <p>No account, no tracking. Your library, votes and listening history live in a local database. Sign-in tokens and any AI key are kept in your system keychain. Spinamp talks only to the music services you connect (Spotify, Apple Music) and a few public music-data services (MusicBrainz, ListenBrainz, LRCLIB, Deezer, Wikipedia, plus Last.fm and Discogs if you add your own keys), and to the AI provider if you turn that on with your own key.</p>
         <p>Live capture is off until you say so. It hears only the Spotify app, turns audio into a few numbers every 50 ms, and discards the audio immediately. Sharing those song fingerprints with the community database is a separate, opt-in choice, and nothing is shared yet.</p>
       </div>
     </section>
   </main>
 
   <footer>
-    <p>Spinamp is an independent project by Hollis Labs and is not affiliated with or endorsed by Spotify. Spotify is a trademark of Spotify AB.</p>
+    <p>Spinamp is an independent project by Hollis Labs and is not affiliated with or endorsed by Spotify, Apple, Last.fm or Discogs. Spotify is a trademark of Spotify AB; Apple Music is a trademark of Apple Inc.</p>
     <p>The code is MIT-licensed. The Spinamp name and logo are trademarks of Hollis Labs (<a href="https://github.com/hollis-labs/spinamp/blob/main/TRADEMARK.md">trademark policy</a>).</p>
     <p><a href="https://github.com/hollis-labs/spinamp">Source and issues on GitHub</a></p>
   </footer>
