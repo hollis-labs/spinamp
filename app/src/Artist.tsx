@@ -33,7 +33,7 @@ export default function Artist({ name, onBack }: { name: string; onBack: () => v
   return (
     <section className="win">
       <div className="winhead">
-        <button className="btn" onClick={onBack}><Ic.Back /> BACK</button>
+        <button className="btn icon" title="Back" onClick={onBack}><Ic.Back /></button>
         <span className="crumb">ARTIST</span>
       </div>
       <div className="scroll artist">

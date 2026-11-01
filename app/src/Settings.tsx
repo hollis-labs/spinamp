@@ -74,11 +74,11 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   return (
     <section className="win">
       <div className="winhead">
-        <button className="btn" onClick={onClose}><Ic.Back /> BACK</button>
+        <button className="btn icon" title="Back" onClick={onClose}><Ic.Back /></button>
         <span className="crumb">SETTINGS</span>
         <span style={{ flex: 1 }} />
         {msg && <span className={msg.startsWith("ERROR") ? "bad-text" : "ok-text"}>{msg}</span>}
-        <button className="btn primary" style={{ width: "auto", padding: "0 16px", height: 36 }} onClick={save}>SAVE</button>
+        <button className="btn primary" onClick={save}>SAVE</button>
       </div>
       <div className="scroll setbody">
         <h3>SPOTIFY</h3>

@@ -85,7 +85,7 @@ const COLS: ColumnDef[] = [
   { id: "plays", label: "PLAYS", full: "Plays (started)", def: true },
   { id: "heard", label: "HEARD", full: "Listens (played through)", def: false },
   { id: "weight", label: "WT", full: "Weight (thumbs, favorites)", def: true },
-  { id: "src", label: "SRC", full: "Which services have this song", def: true },
+  { id: "src", label: "SRC", full: "Which services have this song", def: false },
 ];
 const srcTag = (id: string) => ({ spotify: "SP", applemusic: "AM" } as Record<string, string>)[id] ?? id.slice(0, 2).toUpperCase();
 const COLS_KEY = "spinamp.columns";
@@ -138,7 +138,7 @@ function TrackTable(p: {
           {p.rows.slice(0, 1000).map((r, i) => (
             <tr key={r.id + i} className={`${p.nowId === r.id ? "now" : ""} ${r.cooling ? "cool" : ""} ${r.blocked ? "blocked" : ""} ${r.muted_until ? "muted" : ""}`} onClick={() => p.onPlay?.(r.id)}>
               {show("idx") && <td className="dim">{String(i + 1).padStart(2, "0")}</td>}
-              <td><span className="ell t">{r.title}</span>{r.blocked && <span className="tag hot" style={{ marginLeft: 8 }}>BLOCKED</span>}{r.muted_until ? <span className="tag" style={{ marginLeft: 8 }}>MUTED {Math.max(1, Math.ceil((r.muted_until * 1000 - Date.now()) / 86_400_000))}D</span> : null}</td>
+              <td>{r.favorite && <span className="fav" title="Favorite">★</span>}<span className="ell t">{r.title}</span>{r.blocked && <span className="tag hot" style={{ marginLeft: 8 }}>BLOCKED</span>}{r.muted_until ? <span className="tag" style={{ marginLeft: 8 }}>MUTED {Math.max(1, Math.ceil((r.muted_until * 1000 - Date.now()) / 86_400_000))}D</span> : null}</td>
               {show("artist") && <td className="dim"><span className="ell a">{r.artist}</span></td>}
               {show("album") && <td className="dim"><span className="ell a">{r.album ?? "—"}</span></td>}
               {show("bpm") && (
@@ -167,7 +167,7 @@ function TrackTable(p: {
               </span></td>}
               {show("src") && <td className="dim nw" title={(r.sources ?? [r.id.split(":")[0]]).join(" + ")}>{(r.sources ?? [r.id.split(":")[0]]).map(srcTag).join("+")}</td>}
               {p.full && (
-                <td onClick={(e) => e.stopPropagation()}><span className="rowact">
+                <td className="act" onClick={(e) => e.stopPropagation()}><span className="rowact">
                   <VoteButton small up title="Plus: like this more" onVote={() => p.onVote?.(r.id, true)} />
                   <VoteButton small up={false} title="Minus: like this less" onVote={() => p.onVote?.(r.id, false)} />
                   <button className={`btn small icon star ${r.favorite ? "on" : ""}`} title={r.favorite ? "Unfavorite" : "Favorite: plays more often and teaches your taste"} onClick={() => p.onFav?.(r.id, !r.favorite)}><Ic.Star on={!!r.favorite} /></button>
@@ -535,26 +535,26 @@ export default function App() {
         ) : null}
         {pool && (mode === "Discovery" || mode === "ShuffleDiscovery") && <Br k={pool.running ? "FINDING" : "POOL"} v={pool.pool} />}
         <Br k="LIB" v={allCount} />
-        <button className="btn small icon" title="Settings" onClick={() => setScreen(screen === "settings" ? "main" : "settings")}><Ic.Gear /></button>
+        <button className="btn icon ghost" title="Settings" onClick={() => setScreen(screen === "settings" ? "main" : "settings")}><Ic.Gear /></button>
       </div>
 
       {askCapture && (
         <div className="ask">
           <div>
-            <b>LET SPINAMP LISTEN TO SPOTIFY?</b>
-            <div className="dim" style={{ marginTop: 4, textTransform: "none", lineHeight: 1.5 }}>
+            <div className="t">LET SPINAMP LISTEN TO SPOTIFY?</div>
+            <div className="d">
               While you listen, Spinamp can hear the Spotify desktop app (only Spotify) and remember each song's shape, so the visualiser and the
               seek bar match the real music from then on. Audio is turned into a few numbers and thrown away immediately. macOS will ask for
               Screen &amp; System Audio Recording permission. You can change this any time in Settings.
             </div>
           </div>
-          <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", justifyContent: "flex-end" }}>
-            <label className="pill" style={{ height: 36, fontSize: 11, maxWidth: 250, textTransform: "none", whiteSpace: "normal", lineHeight: 1.25 }} title="Nothing is sent yet. This records your choice for when sharing launches at spinamp.fm.">
-              <input type="checkbox" checked={shareFp} onChange={(e) => setShareFp(e.target.checked)} style={{ accentColor: "var(--orange)" }} /> Also share song fingerprints with spinamp.fm when it launches (anonymous)
-            </label>
-            <button className="btn primary" style={{ width: "auto", padding: "0 14px", height: 36 }} onClick={() => answerCapture(true)}>TURN ON</button>
+          <div className="acts">
             <button className="btn" onClick={() => answerCapture(false)}>NOT NOW</button>
+            <button className="btn primary" onClick={() => answerCapture(true)}>TURN ON</button>
           </div>
+          <label title="Nothing is sent yet. This records your choice for when sharing launches.">
+            <input type="checkbox" checked={shareFp} onChange={(e) => setShareFp(e.target.checked)} /> Also share anonymous song fingerprints with spinamp.fm when sharing launches
+          </label>
         </div>
       )}
 
@@ -592,25 +592,33 @@ export default function App() {
             onSeek={async (ms) => { setElapsed(ms); try { await invoke("playback_seek", { positionMs: ms }); } catch (e) { setMsg("ERROR: " + String(e)); } }} />
         ) : <div className="seek" />}
         <div className="deck">
-          <button className="btn primary" onClick={toggle} title={playing ? "Pause" : "Play"}>{playing ? <Ic.Pause /> : <Ic.Play />}</button>
-          <button className="btn icon" onClick={skip} title="Skip"><Ic.Next /></button>
-          <VoteButton up title="Plus: like this more" onVote={() => voteTrack(true)} />
-          <VoteButton up={false} title="Minus: like this less, and skip" onVote={() => { voteTrack(false); setTimeout(skip, 350); }} />
-          {cur && (() => {
-            const row = rows.find((r) => r.id === cur.id);
-            return (
-              <>
-                <button className={`btn icon star ${row?.favorite ? "on" : ""}`} title="Favorite" disabled={!row} onClick={() => fav(cur.id, !row?.favorite)}><Ic.Star on={!!row?.favorite} /></button>
-                <RowMenu track={{ id: cur.id, title: cur.title, artist: cur.artist, tags: cur.tags }} state={row ?? {}} inPlaylist={view !== null && view !== undefined}
-                  onMute={(d) => mute(cur.id, d)} onRemoveHere={() => removeFrom(cur.id)} onRemoveAll={() => removeAll(cur.id)} onBlock={block} />
-              </>
-            );
-          })()}
-          <button className={`btn ${screen === "lyrics" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "lyrics" ? "main" : "lyrics")}><Ic.Lyr /> LYRICS</button>
-          <button className={`btn ${screen === "artist" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "artist" ? "main" : "artist")}><Ic.User /> ARTIST</button>
-          <button className={`btn ${screen === "credits" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "credits" ? "main" : "credits")}><Ic.Disc /> CREDITS</button>
+          <div className="group">
+            <button className="btn primary play" onClick={toggle} title={playing ? "Pause" : "Play"}>{playing ? <Ic.Pause /> : <Ic.Play />}</button>
+            <button className="btn icon" onClick={skip} title="Skip"><Ic.Next /></button>
+          </div>
+          <span className="divider" />
+          <div className="group">
+            <VoteButton up title="Plus: like this more" onVote={() => voteTrack(true)} />
+            <VoteButton up={false} title="Minus: like this less, and skip" onVote={() => { voteTrack(false); setTimeout(skip, 350); }} />
+            {cur && (() => {
+              const row = rows.find((r) => r.id === cur.id);
+              return (
+                <>
+                  <button className={`btn icon star ${row?.favorite ? "on" : ""}`} title="Favorite" disabled={!row} onClick={() => fav(cur.id, !row?.favorite)}><Ic.Star on={!!row?.favorite} /></button>
+                  <RowMenu track={{ id: cur.id, title: cur.title, artist: cur.artist, tags: cur.tags }} state={row ?? {}} inPlaylist={view !== null && view !== undefined}
+                    onMute={(d) => mute(cur.id, d)} onRemoveHere={() => removeFrom(cur.id)} onRemoveAll={() => removeAll(cur.id)} onBlock={block} />
+                </>
+              );
+            })()}
+          </div>
+          <span className="divider" />
+          <div className="seg icons">
+            <button className={screen === "lyrics" ? "on" : ""} disabled={!cur} title="Lyrics" onClick={() => setScreen(screen === "lyrics" ? "main" : "lyrics")}><Ic.Lyr /></button>
+            <button className={screen === "artist" ? "on" : ""} disabled={!cur} title="Artist" onClick={() => setScreen(screen === "artist" ? "main" : "artist")}><Ic.User /></button>
+            <button className={screen === "credits" ? "on" : ""} disabled={!cur} title="Credits" onClick={() => setScreen(screen === "credits" ? "main" : "credits")}><Ic.Disc /></button>
+          </div>
           <span className="sp" />
-          <div className="seg">
+          <div className="seg modes">
             {MODES.map(([k, label, Icon]) => (
               <button key={k} className={mode === k ? "on" : ""} onClick={() => setMode(k)} title={k}><Icon />{label}</button>
             ))}
@@ -627,7 +635,7 @@ export default function App() {
       {/* ---- playlist window ---- */}
       {screen === "main" && <section className="win">
         <div className="winhead">
-          {(inTracks || preview) && <button className="btn" onClick={backToLists}><Ic.Back /> BACK</button>}
+          {(inTracks || preview) && <button className="btn icon" title="Back to playlists" onClick={backToLists}><Ic.Back /></button>}
           <span className="crumb">
             {preview ? preview.remote.name.toUpperCase() : inTracks ? playlistName.toUpperCase() : tab === "library" ? "PLAYLISTS" : tab === "search" ? "SEARCH" : tab === "generate" ? "GENERATE" : provName.toUpperCase()}
           </span>
@@ -655,10 +663,10 @@ export default function App() {
             </label>
             <button className="btn icon" title={desc ? "Descending" : "Ascending"} onClick={() => sort(sortKey, !desc)}><Ic.Dir desc={desc} /></button>
             <ColumnPicker cols={COLS} visible={columns.visible} onToggle={columns.toggle} onReset={columns.reset} />
-            {view && <button className="btn bad" onClick={() => removePlaylist(view)}>DELETE</button>}
+            {view && <button className="btn icon ghost bad" title="Delete playlist" onClick={() => removePlaylist(view)}><Ic.Trash /></button>}
           </>}
           {preview && <>
-            <button className="btn primary" style={{ width: "auto", padding: "0 14px", height: 36 }} onClick={importPlaylist}>IMPORT PLAYLIST + TRACKS</button>
+            <button className="btn primary"  onClick={importPlaylist}>IMPORT PLAYLIST + TRACKS</button>
             <button className="btn" onClick={importTracks}>TRACKS ONLY</button>
           </>}
         </div>
@@ -695,7 +703,7 @@ export default function App() {
                 onChange={(e) => setPrompt(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doGenerate()} /></label>
               <label className="pill">Min:<input className="field" style={{ width: 44 }} placeholder="auto" value={genMin}
                 onChange={(e) => setGenMin(e.target.value)} onKeyDown={(e) => e.key === "Enter" && doGenerate()} /></label>
-              <button className="btn primary" style={{ width: "auto", padding: "0 14px", height: 36 }} onClick={doGenerate}><Ic.Spark /> GENERATE</button>
+              <button className="btn primary" onClick={doGenerate}><Ic.Spark /> GENERATE</button>
             </div>
             <div className="status" style={{ color: "var(--dim)" }}>
               AI: {aiOn ? "ON (CLAUDE READS YOUR PROMPT + TAG NAMES ONLY)" : "OFF (KEYWORD MATCHING; ADD A KEY IN SETTINGS)"}
@@ -709,7 +717,7 @@ export default function App() {
                   <Br k="TAG MATCH" v={`${gen.matched}/${gen.tracks.length}`} />
                   <span style={{ flex: 1 }} />
                   <button className="btn" onClick={doGenerate}><Ic.Shuffle /> REROLL</button>
-                  <button className="btn primary" style={{ width: "auto", padding: "0 14px", height: 36 }} onClick={saveGenerated}>SAVE PLAYLIST</button>
+                  <button className="btn primary" onClick={saveGenerated}>SAVE PLAYLIST</button>
                 </div>
                 {(gen.intent.include_tags.length > 0 || gen.note) && (
                   <div className="status" style={{ color: "var(--dim)" }}>
@@ -789,7 +797,7 @@ export default function App() {
           ) : (
             <div className="empty">
               {remotes === null ? "LOADING..." : provs.find((x) => x.id === prov)?.connected ? `CONNECTED TO ${provName.toUpperCase()}, BUT NOTHING CAME BACK` : `NOT CONNECTED TO ${provName.toUpperCase()}`}<br />
-              <button className="btn primary" style={{ width: "auto", padding: "0 16px", marginTop: 10 }} onClick={connect}><Ic.Plug /> CONNECT</button>
+              <button className="btn primary" onClick={connect}><Ic.Plug /> CONNECT</button>
             </div>
           )
         )}
@@ -804,7 +812,7 @@ export default function App() {
           </>
         )}
       </section>}
-      <div className="foot">PLAYBACK RUNS ON YOUR ACTIVE SPOTIFY DEVICE · SPOTIFY PREMIUM REQUIRED · LIVE CAPTURE IS OPTIONAL AND ONLY HEARS THE SPOTIFY APP</div>
+      <div className="foot">PLAYS THROUGH YOUR CONNECTED APPS · SPOTIFY NEEDS PREMIUM · LIVE CAPTURE IS OPTIONAL</div>
     </div>
   );
 }

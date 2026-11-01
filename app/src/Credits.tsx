@@ -30,7 +30,7 @@ export default function Credits({ track, onBack }: { track: Track; onBack: () =>
   return (
     <section className="win">
       <div className="winhead">
-        <button className="btn" onClick={onBack}><Ic.Back /> BACK</button>
+        <button className="btn icon" title="Back" onClick={onBack}><Ic.Back /></button>
         <span className="crumb">CREDITS</span>
       </div>
       <div className="scroll artist">

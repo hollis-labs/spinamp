@@ -30,7 +30,7 @@ export default function Lyrics({ track, elapsed, onBack }: { track: Track; elaps
   return (
     <section className="win">
       <div className="winhead">
-        <button className="btn" onClick={onBack}><Ic.Back /> BACK</button>
+        <button className="btn icon" title="Back" onClick={onBack}><Ic.Back /></button>
         <span className="crumb">LYRICS</span>
         <span className="dim">{track.title} — {track.artist}</span>
         <span style={{ flex: 1 }} />
