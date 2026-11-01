@@ -2,8 +2,8 @@
 #   brew install --cask hollis-labs/tap/spinamp
 # Refresh version + checksum for a release with:  packaging/update-cask.sh 0.1.0
 cask "spinamp" do
-  version "0.1.0"
-  sha256 "d7ee51729c7866108f6653708146be35208354bef77e503067d24e578ddb3334"
+  version "0.2.0"
+  sha256 "b581e5d2fb602b74acbf8102c869417fe75ad4c3cd937367fee04f2b1d3217bb"
 
   url "https://github.com/hollis-labs/spinamp/releases/download/v#{version}/Spinamp_#{version}_aarch64.dmg"
   name "Spinamp"
