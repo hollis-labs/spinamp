@@ -945,11 +945,15 @@ async fn applemusic_connect(app: &Shared) -> Result<(), String> {
     if !am.has_key().await {
         return Err("Add your Apple MusicKit key in Settings first.".into());
     }
+    spinamp_applemusic::log("connect: starting");
     let dev = am.developer_token().await?;
     let session = spinamp_applemusic::Session::begin(&dev, port).await?;
     tauri_plugin_opener::open_url(session.authorize_url.clone(), None::<&str>).map_err(|e| e.to_string())?;
-    am.set_user_token(session.finish().await?).await;
+    let tok = session.finish().await?;
+    spinamp_applemusic::log("connect: token received, saving");
+    am.set_user_token(tok).await;
     persist_tokens(app, &*am).await;
+    spinamp_applemusic::log(&format!("connect: saved, authenticated={}", am.is_authenticated().await));
     Ok(())
 }
 
@@ -1202,6 +1206,7 @@ fn dirs_path() -> String {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let dir = dirs_path();
+    spinamp_applemusic::set_log_path(std::path::Path::new(&dir).with_file_name("applemusic.log"));
     let store = Store::open(&dir).expect("open db");
     let settings: Settings = store.kv_get("settings").ok().flatten().and_then(|j| serde_json::from_str(&j).ok()).unwrap_or_default();
     let settings = settings.sanitized();

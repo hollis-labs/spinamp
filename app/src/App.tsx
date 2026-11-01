@@ -243,7 +243,7 @@ export default function App() {
     invoke<{ id: string; name: string; connected: boolean }[]>("provider_list").then(setProvs).catch(() => {});
     setRemotes(null);
     setPreview(null);
-    invoke<Remote[]>("provider_playlists", { id: prov }).then(setRemotes).catch(() => setRemotes([]));
+    invoke<Remote[]>("provider_playlists", { id: prov }).then(setRemotes).catch((e) => { setRemotes([]); if (!String(e).includes("not authenticated")) setMsg("ERROR: " + String(e)); });
   }, [prov]);
 
   /* ----- visualiser pattern for the playing track ----- */

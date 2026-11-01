@@ -107,8 +107,15 @@ impl AppleMusicProvider {
             .send()
             .await
             .map_err(err)?;
+        crate::log(&format!("GET {} -> {}", path.split('?').next().unwrap_or(path), r.status()));
         match r.status().as_u16() {
-            200..=299 => r.json::<T>().await.map_err(err),
+            200..=299 => {
+                let body = r.text().await.map_err(err)?;
+                serde_json::from_str::<T>(&body).map_err(|e| {
+                    crate::log(&format!("could not read Apple's reply: {e}; starts: {}", body.chars().take(300).collect::<String>()));
+                    err(format!("could not read Apple's reply: {e}"))
+                })
+            }
             401 => Err(err("Apple rejected the developer token. Check the Key ID, Team ID and .p8 in Settings.")),
             403 => Err(err("Apple Music access expired or was denied. Reconnect Apple Music (needs an active subscription).")),
             429 => Err(err("Apple Music rate limit hit; try again in a moment.")),

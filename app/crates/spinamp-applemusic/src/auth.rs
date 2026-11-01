@@ -87,11 +87,11 @@ impl Session {
 async fn serve(mut sock: tokio::net::TcpStream, page: &str, state: &str, tx: tokio::sync::mpsc::UnboundedSender<Result<String, String>>) {
     let Some((head, body)) = read_request(&mut sock).await else { return };
     let first = head.lines().next().unwrap_or("");
-    eprintln!("[applemusic sign-in] {first} ({} body bytes)", body.len());
+    crate::log(&format!("sign-in server: {first} ({} body bytes)", body.len()));
     if first.starts_with("POST /token") {
         let _ = sock.write_all(b"HTTP/1.1 204 No Content\r\nConnection: close\r\nContent-Length: 0\r\n\r\n").await;
         let res = parse_token(&body, state);
-        eprintln!("[applemusic sign-in] token post: {}", if res.is_ok() { "accepted".to_string() } else { format!("{res:?}") });
+        crate::log(&format!("token post: {}", if res.is_ok() { "accepted".to_string() } else { format!("{:?}", res.as_ref().err()) }));
         let _ = tx.send(res);
         return;
     }

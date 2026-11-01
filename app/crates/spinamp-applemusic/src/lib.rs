@@ -7,6 +7,24 @@ pub mod player;
 pub mod token;
 
 pub use auth::Session;
+
+static LOG: std::sync::OnceLock<std::path::PathBuf> = std::sync::OnceLock::new();
+
+/// Where to append the sign-in / API diagnostic log (never contains tokens or keys).
+pub fn set_log_path(p: std::path::PathBuf) {
+    let _ = LOG.set(p);
+}
+
+pub fn log(msg: &str) {
+    eprintln!("[applemusic] {msg}");
+    if let Some(p) = LOG.get() {
+        use std::io::Write;
+        let t = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_secs()).unwrap_or(0);
+        if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(p) {
+            let _ = writeln!(f, "{t} {msg}");
+        }
+    }
+}
 pub use client::{AppleMusicProvider, Creds};
 
 /// Throwaway P-256 keys for tests, generated fresh so no private key lives in the repo.
