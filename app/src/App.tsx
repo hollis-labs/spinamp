@@ -8,6 +8,7 @@ import RowMenu from "./RowMenu";
 import ColumnPicker, { type ColumnDef } from "./ColumnPicker";
 import Lyrics from "./Lyrics";
 import Artist from "./Artist";
+import Credits from "./Credits";
 import * as Ic from "./Icons";
 
 type Track = {
@@ -208,7 +209,7 @@ export default function App() {
   const [msg, setMsg] = useState("");
   const [busy, setBusy] = useState(false);
 
-  const [screen, setScreen] = useState<"main" | "settings" | "lyrics" | "artist">("main");
+  const [screen, setScreen] = useState<"main" | "settings" | "lyrics" | "artist" | "credits">("main");
   const [pool, setPool] = useState<{ running: boolean; pool: number } | null>(null);
   const [pattern, setPattern] = useState<Pattern | null>(null);
   const [capture, setCapture] = useState<Capture | null>(null);
@@ -607,6 +608,7 @@ export default function App() {
           })()}
           <button className={`btn ${screen === "lyrics" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "lyrics" ? "main" : "lyrics")}><Ic.Lyr /> LYRICS</button>
           <button className={`btn ${screen === "artist" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "artist" ? "main" : "artist")}><Ic.User /> ARTIST</button>
+          <button className={`btn ${screen === "credits" ? "on" : ""}`} disabled={!cur} onClick={() => setScreen(screen === "credits" ? "main" : "credits")}><Ic.Disc /> CREDITS</button>
           <span className="sp" />
           <div className="seg">
             {MODES.map(([k, label, Icon]) => (
@@ -619,6 +621,7 @@ export default function App() {
       {screen === "settings" && <Settings onClose={() => { setScreen("main"); invoke<boolean>("ai_enabled").then(setAiOn); }} />}
 
       {screen === "lyrics" && cur && <Lyrics track={cur} elapsed={elapsed} onBack={() => setScreen("main")} />}
+      {screen === "credits" && cur && <Credits track={cur} onBack={() => setScreen("main")} />}
       {screen === "artist" && cur && <Artist name={cur.artist.split(", ")[0]} onBack={() => setScreen("main")} />}
 
       {/* ---- playlist window ---- */}

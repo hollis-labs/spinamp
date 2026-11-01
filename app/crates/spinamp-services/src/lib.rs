@@ -1,5 +1,6 @@
 pub mod ai;
 pub mod deezer;
+pub mod discogs;
 pub mod itunes;
 pub mod lastfm;
 pub mod listenbrainz;

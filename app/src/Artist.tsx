@@ -10,12 +10,21 @@ type P = {
   tracks: number; plays: number; listens: number;
 };
 
+type D = { name: string; realname?: string; profile: string; aliases: string[]; members: [string, boolean][]; urls: string[]; url: string };
+
 const compact = (n: number) => (n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${(n / 1e3).toFixed(1)}K` : String(n));
 const Br = ({ k, v }: { k: string; v: string | number }) => <span className="br">{k}: <b>{v}</b></span>;
 
 export default function Artist({ name, onBack }: { name: string; onBack: () => void }) {
   const [p, setP] = useState<P | null | undefined>(undefined);
   const [err, setErr] = useState("");
+  const [d, setD] = useState<D | null>(null);
+  const [hasToken, setHasToken] = useState(true);
+  useEffect(() => {
+    setD(null);
+    invoke<boolean>("discogs_status").then(setHasToken);
+    invoke<D | null>("discogs_artist", { name }).then(setD).catch(() => setD(null));
+  }, [name]);
   useEffect(() => {
     setP(undefined); setErr("");
     invoke<P>("artist_profile", { name }).then(setP).catch((e) => { setErr(String(e)); setP(null); });
@@ -51,6 +60,16 @@ export default function Artist({ name, onBack }: { name: string; onBack: () => v
             {p.tags.length > 0 && <div className="tags">{p.tags.map((t) => <span className="tag" key={t}>{t}</span>)}</div>}
             {p.extract && <p className="bio">{p.extract}</p>}
             {p.members.length > 0 && <div className="blk"><div className="label">MEMBERS</div>{p.members.join(" · ")}</div>}
+            {d && (
+              <div className="blk"><div className="label">DISCOGS</div>
+                {d.realname && <div>Real name: <b>{d.realname}</b></div>}
+                {d.aliases.length > 0 && <div>Also known as: {d.aliases.slice(0, 8).join(" · ")}</div>}
+                {d.members.length > 0 && <div>Members: {d.members.map(([n, a]) => (a ? n : `${n} (former)`)).join(" · ")}</div>}
+                {d.profile && !p.extract && <p className="bio">{d.profile}</p>}
+                {d.url && <button className="btn small" style={{ marginTop: 8 }} onClick={() => openUrl(d.url)}>DISCOGS <Ic.Ext /></button>}
+              </div>
+            )}
+            {!hasToken && <div className="dim" style={{ fontSize: 11, marginTop: 10 }}>ADD A DISCOGS TOKEN IN SETTINGS FOR ALIASES, MEMBERS AND CREDITS.</div>}
             {p.top_tracks.length > 0 && <div className="blk"><div className="label">POPULAR (DEEZER)</div>{p.top_tracks.join(" · ")}</div>}
             <div className="links">
               {p.wiki_url && <button className="btn small" onClick={() => openUrl(p.wiki_url!)}>WIKIPEDIA <Ic.Ext /></button>}

@@ -33,3 +33,4 @@ export const Star = ({ on }: { on: boolean }) => (
   </svg>
 );
 export const Columns = () => <S><path d="M4 5h16v14H4zM9.5 5v14M14.5 5v14" /></S>;
+export const Disc = () => <S><path d="M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6z" /></S>;

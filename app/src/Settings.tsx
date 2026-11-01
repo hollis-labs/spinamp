@@ -46,6 +46,8 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [am, setAm] = useState<Conn | null>(null);
   const [lf, setLf] = useState<{ key_set: boolean; user: string } | null>(null);
   const [lfKey, setLfKey] = useState("");
+  const [dg, setDg] = useState(false);
+  const [dgTok, setDgTok] = useState("");
   const [lfVotes, setLfVotes] = useState(true);
   const [amKey, setAmKey] = useState({ source: "", keyId: "", teamId: "" });
   const [an, setAn] = useState<Analysis | null>(null);
@@ -55,7 +57,7 @@ export default function Settings({ onClose }: { onClose: () => void }) {
   const [capMsg, setCapMsg] = useState("");
 
   const load = async () => { const r = await invoke<View>("get_settings"); setV(r); setS(r.settings); };
-  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Conn>("provider_status", { id: "applemusic" }).then(setAm); invoke<{ key_set: boolean; user: string }>("lastfm_status").then(setLf); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
+  useEffect(() => { load(); invoke<Catalog>("catalog_status").then(setCat); invoke<Conn>("provider_status", { id: "spotify" }).then(setConn); invoke<Conn>("provider_status", { id: "applemusic" }).then(setAm); invoke<{ key_set: boolean; user: string }>("lastfm_status").then(setLf); invoke<boolean>("discogs_status").then(setDg); invoke<Analysis>("analysis_status").then(setAn); invoke<Deleted>("deleted_counts").then(setDel); invoke<Cap>("capture_status").then(setCap); invoke<BlockRow[]>("list_blocks").then(setBlocks); }, []);
   useEffect(() => {
     if (!cat?.running) return;
     const id = setInterval(async () => setCat(await invoke<Catalog>("catalog_status")), 2000);
@@ -135,6 +137,14 @@ export default function Settings({ onClose }: { onClose: () => void }) {
           <label className="pill" style={{ height: 26, fontSize: 11 }}>
             <input type="checkbox" checked={lfVotes} onChange={(e) => setLfVotes(e.target.checked)} style={{ accentColor: "var(--orange)" }} /> LOVED = +1
           </label>
+        </Row>
+
+        <h3>DISCOGS</h3>
+        <Row label="Personal access token" hint="Free: discogs.com > Settings > Developers > Generate new token. Adds labels, pressings and per-song credits (CREDITS button) and aliases/members (ARTIST panel). Read-only; saved to the Keychain.">
+          <input className="inp" type="password" value={dgTok} onChange={(e) => setDgTok(e.target.value)} placeholder={dg ? "•••••••• (saved)" : "token"} autoComplete="off" />
+          <button className="btn" disabled={!dgTok.trim()} onClick={() => act(async () => { await invoke("set_discogs_token", { token: dgTok }); setDgTok(""); setDg(await invoke<boolean>("discogs_status")); return "TOKEN SAVED"; })}>SAVE TOKEN</button>
+          {dg && <button className="btn bad" onClick={() => act(async () => { await invoke("clear_discogs_token"); setDg(await invoke<boolean>("discogs_status")); return "TOKEN REMOVED"; })}>REMOVE</button>}
+          <button className="btn" disabled={!dg} onClick={() => act(async () => await invoke<string>("discogs_test"))}>TEST</button>
         </Row>
 
         <h3>AI</h3>

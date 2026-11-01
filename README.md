@@ -49,6 +49,7 @@ seeds = library artists you like (weighted by feedback) -> similar artists from 
 ## Apple Music, merging, Last.fm
 - Apple Music: bring your own MusicKit key (Settings > Apple Music: path to the `.p8`, Key ID, Team ID), then CONNECT in the SOURCES tab. Playback controls the Music app (macOS) and only plays songs that are in your library.
 - A song on several services (same ISRC) is one row; Settings > Playback chooses which service plays it.
+- Discogs (read-only, your own personal access token): the CREDITS button shows the release's label, catalogue number, country, format, genres/styles and per-song credits; the ARTIST panel adds real name, aliases and members. Cached 90 days.
 - Last.fm (read-only, your own API key + username): similar artists feed Discovery, and Settings can import scrobbles (matched to songs you own, backfilled with real dates), loved tracks and top artists.
 
 ## Provider credentials
