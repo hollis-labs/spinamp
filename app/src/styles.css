@@ -20,10 +20,10 @@
   --orange: #ef7a3c;
   --amber: #f4b24a;
   --yellow: #f6ee6e;
-  --accent: #ffd700;
-  --accent-tint: rgba(255, 215, 0, .12);
-  --accent-line: rgba(255, 215, 0, .45);
-  --on-accent: #1a1500;
+  --accent: #f2ac48;
+  --accent-tint: rgba(242, 172, 72, .13);
+  --accent-line: rgba(242, 172, 72, .5);
+  --on-accent: #1a0f05;
 
   --ui: "Chakra Petch", ui-sans-serif, system-ui, sans-serif;
   --mono: "JetBrains Mono", ui-monospace, Menlo, monospace;
@@ -108,7 +108,7 @@ td.num, th.num { text-align: right; }
 .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
 .btn.ghost:hover { background: var(--ctl); color: var(--ink); border-color: var(--line-hi); }
 .btn.primary { border-color: transparent; background: var(--accent); color: var(--on-accent); }
-.btn.primary:hover { background: #ffe14d; border-color: transparent; }
+.btn.primary:hover { background: #f7bd68; border-color: transparent; }
 .btn.on { background: var(--accent-tint); border-color: var(--accent-line); color: var(--accent); }
 .btn.bad:hover { background: rgba(216, 51, 42, .14); border-color: rgba(216, 51, 42, .5); color: #ff7468; }
 .btn.good:hover { border-color: var(--yellow); color: var(--yellow); }
@@ -237,7 +237,7 @@ tr.blocked td .tag { text-decoration: none; display: inline-block; }
 .shape { position: relative; border-top: 1px solid var(--line); background: #08090b; cursor: pointer; }
 .shape canvas { display: block; width: 100%; height: 44px; }
 .shapelabel { position: absolute; right: var(--s-2); top: 3px; font-size: 9px; letter-spacing: .12em; color: #6f8796; pointer-events: none; }
-.ask { display: grid; grid-template-columns: 1fr auto; gap: var(--s-2) var(--s-4); align-items: center; border: 1px solid var(--accent-line); background: linear-gradient(0deg, rgba(255,215,0,.05), rgba(255,215,0,.05)), var(--panel); border-radius: var(--r-3); padding: var(--s-3) var(--s-4); }
+.ask { display: grid; grid-template-columns: 1fr auto; gap: var(--s-2) var(--s-4); align-items: center; border: 1px solid var(--accent-line); background: linear-gradient(0deg, rgba(242,172,72,.05), rgba(242,172,72,.05)), var(--panel); border-radius: var(--r-3); padding: var(--s-3) var(--s-4); }
 .ask .t { font-weight: 700; font-size: 12px; letter-spacing: .08em; }
 .ask .d { color: var(--dim); font-size: 12px; line-height: 1.55; margin-top: var(--s-1); max-width: 62ch; }
 .ask .acts { display: flex; gap: var(--s-2); align-items: center; }
