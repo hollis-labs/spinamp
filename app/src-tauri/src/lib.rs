@@ -179,6 +179,14 @@ fn players(a: &App) -> Players {
 impl Players {
     /// Start a track on the provider that owns it. Spotify gets the wake-the-app fallback.
     async fn play(&self, track: &Track) -> Result<(), String> {
+        // Switching providers: silence the one that was playing, or both would be audible.
+        if let Some(prev) = self.active.as_deref().filter(|id| *id != track.provider.as_str()) {
+            if let Ok(p) = self.reg.get(prev) {
+                if p.is_authenticated().await {
+                    let _ = p.pause().await;
+                }
+            }
+        }
         if track.provider == "spotify" {
             return play_or_wake(&self.spotify, track).await;
         }
