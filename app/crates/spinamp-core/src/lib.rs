@@ -17,6 +17,7 @@ pub mod engine;
 pub mod feedback;
 pub mod generate;
 pub mod listen;
+pub mod merge;
 pub mod model;
 pub mod provider;
 pub mod shuffle;

@@ -849,6 +849,26 @@ mod tests {
     }
 
     #[test]
+    fn same_recording_on_two_providers_loads_as_two_rows_the_core_folds_into_one() {
+        let s = Store::memory().unwrap();
+        let mut a = track("1");
+        a.meta.isrc = Some("GBBQY0400035".into());
+        let mut b = track("2");
+        b.id = TrackId::new("applemusic", "99");
+        b.provider = "applemusic".into();
+        b.meta.isrc = Some("gbbqy0400035".into());
+        s.add_track(&a, 10).unwrap();
+        s.add_track(&b, 20).unwrap();
+        s.record_vote(&a.id, 30, true).unwrap();
+        s.record_vote(&b.id, 40, true).unwrap();
+        let raw = s.load_library().unwrap();
+        assert_eq!(raw.len(), 2, "both copies stay stored; merging is only a view");
+        let merged = spinamp_core::merge::merge_by_isrc(raw);
+        assert_eq!(merged.len(), 1);
+        assert_eq!((merged[0].track.id.0.as_str(), merged[0].alts.len(), merged[0].votes.votes().len()), ("spotify:1", 1, 2));
+    }
+
+    #[test]
     fn roundtrips_library_votes_and_plays() {
         let s = Store::memory().unwrap();
         s.add_track(&track("1"), 10).unwrap();

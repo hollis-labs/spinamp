@@ -177,6 +177,10 @@ pub struct TrackState {
     /// Starred: permanently hotter in shuffle, sorting and taste learning.
     #[serde(default)]
     pub favorite: bool,
+    /// The same recording (same ISRC) as other providers know it. `track` is the primary copy;
+    /// these are the others, so playback can pick whichever provider is available.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alts: Vec<Track>,
 }
 
 impl TrackState {
@@ -191,6 +195,7 @@ impl TrackState {
             votes: FeedbackLedger::default(),
             muted_until: None,
             favorite: false,
+            alts: vec![],
         }
     }
 }
@@ -311,5 +316,23 @@ mod viz_tests {
         let old = r#"{"beats":16,"subdiv":8,"beats_per_bar":4,"data":[1,2,3]}"#;
         let o: VizPattern = serde_json::from_str(old).unwrap();
         assert_eq!((o.bands, o.version, o.data.as_slice()), (4, 1, &[1u8, 2, 3][..]));
+    }
+}
+
+impl TrackState {
+    /// Every copy of this recording: the primary first, then the alternates.
+    pub fn variants(&self) -> impl Iterator<Item = &Track> {
+        std::iter::once(&self.track).chain(self.alts.iter())
+    }
+
+    /// Provider ids this recording is available from, without repeats.
+    pub fn sources(&self) -> Vec<String> {
+        let mut v: Vec<String> = vec![];
+        for t in self.variants() {
+            if !v.contains(&t.provider) {
+                v.push(t.provider.clone());
+            }
+        }
+        v
     }
 }

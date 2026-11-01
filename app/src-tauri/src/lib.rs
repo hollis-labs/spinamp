@@ -14,6 +14,7 @@ use spinamp_core::sort::{self, SortKey};
 use spinamp_core::{Track, TrackId, TrackState};
 use spinamp_core::block::{Blocklist, playable};
 use spinamp_core::listen::{Event, Observation, Tracker};
+use spinamp_core::merge;
 use spinamp_core::provider::{MusicProvider, ProviderRegistry};
 use spinamp_core::stats::{self, StatsConfig};
 use spinamp_applemusic::AppleMusicProvider;
@@ -46,7 +47,10 @@ struct App {
     /// Spotify-specific bits (OAuth, history import, discovery seeds).
     spotify: Arc<SpotifyProvider>,
     applemusic: Arc<AppleMusicProvider>,
+    /// One row per recording (same-ISRC copies from different providers are folded together).
     library: Vec<TrackState>,
+    /// Alternate copy id -> the primary copy's id.
+    alias: std::collections::HashMap<TrackId, TrackId>,
     /// Selected playlist id and its ordered members; None = all tracks.
     view: Option<(String, Vec<TrackId>)>,
     candidates: Vec<Track>,
@@ -62,6 +66,38 @@ struct App {
 }
 
 type Shared = Mutex<App>;
+
+/// Rebuild the folded library from the store.
+fn load(a: &mut App) -> Result<(), String> {
+    let raw = a.store.load_library().map_err(|e| e.to_string())?;
+    a.library = merge::merge_by_isrc(raw);
+    a.alias = merge::alias_map(&a.library);
+    Ok(())
+}
+
+/// The primary id for any copy of a recording.
+fn canon(a: &App, id: &TrackId) -> TrackId {
+    a.alias.get(id).cloned().unwrap_or_else(|| id.clone())
+}
+
+/// The library row that holds this id, whichever provider's copy it is.
+fn state_of<'a>(a: &'a App, id: &TrackId) -> Option<&'a TrackState> {
+    let c = canon(a, id);
+    a.library.iter().find(|t| t.track.id == c)
+}
+
+/// Every stored copy id of a recording (for actions that must hit them all).
+fn member_ids(a: &App, id: &TrackId) -> Vec<TrackId> {
+    match state_of(a, id) {
+        Some(s) => s.variants().map(|t| t.id.clone()).collect(),
+        None => vec![id.clone()],
+    }
+}
+
+/// What the UI should show for a track that is playing: the primary copy of its recording.
+fn ui_track(a: &App, t: &Track) -> Track {
+    state_of(a, &t.id).map(|s| s.track.clone()).unwrap_or_else(|| t.clone())
+}
 
 fn now() -> i64 {
     std::time::SystemTime::now()
@@ -84,6 +120,8 @@ struct Row {
     muted_until: Option<i64>,
     /// Matches a block on its song, artist or a tag/genre.
     blocked: bool,
+    /// Providers that have this recording.
+    sources: Vec<String>,
 }
 
 #[derive(Serialize)]
@@ -98,7 +136,11 @@ fn view_states(a: &App) -> Vec<TrackState> {
         None => a.library.clone(),
         Some((_, ids)) => {
             let by_id: std::collections::HashMap<_, _> = a.library.iter().map(|t| (&t.track.id, t)).collect();
-            ids.iter().filter_map(|id| by_id.get(id).map(|t| (*t).clone())).collect()
+            let mut seen = std::collections::HashSet::new();
+            ids.iter()
+                .filter_map(|id| by_id.get(&canon(a, id)).map(|t| (*t).clone()))
+                .filter(|t| seen.insert(t.track.id.clone()))
+                .collect()
         }
     }
 }
@@ -112,13 +154,14 @@ fn rows(app: &App) -> Vec<Row> {
         .map(|t| Row {
             track: t.track.clone(),
             weight: t.votes.score(n, fb),
-            plays: counts.get(&t.track.id).map_or(0, |c| c.plays),
-            listens: counts.get(&t.track.id).map_or(0, |c| c.listens),
+            plays: t.variants().map(|v| counts.get(&v.id).map_or(0, |c| c.plays)).sum(),
+            listens: t.variants().map(|v| counts.get(&v.id).map_or(0, |c| c.listens)).sum(),
             cooling: t.votes.cooldown_until(n, fb).is_some(),
             rating: t.rating,
             favorite: t.favorite,
             muted_until: t.muted_until.filter(|u| *u > n),
             blocked: app.blocklist.blocks(&t.track),
+            sources: t.sources(),
         })
         .collect()
 }
@@ -145,8 +188,15 @@ fn sort_library(app: State<Shared>, key: SortKey, descending: bool) -> Vec<Row> 
 async fn next_track(app: State<'_, Shared>, handle: AppHandle, mode: PlayMode) -> Result<Option<Next>, String> {
     let (picked, players) = pick_next(&app, mode);
     if let Some(p) = &picked {
-        players.play(&p.track).await?;
-        begin_play(&mut app.lock().unwrap(), &p.track, &format!("{mode:?}"), "auto", p.discovery);
+        let state = { let a = app.lock().unwrap(); state_of(&a, &p.track.id).cloned() };
+        let played = match state {
+            Some(s) => players.play_any(&s).await?,
+            None => {
+                players.play(&p.track).await?;
+                p.track.clone()
+            }
+        };
+        begin_play(&mut app.lock().unwrap(), &played, &format!("{mode:?}"), "auto", p.discovery);
         capture::reconcile(&handle);
         if p.discovery && pool_low(&handle) {
             catalog::maybe_refill(&handle, true);
@@ -170,10 +220,17 @@ struct Players {
     spotify: Arc<SpotifyProvider>,
     /// Provider of the track we believe is playing (None until something has played).
     active: Option<String>,
+    /// Settings: which provider to prefer when several have the recording ("" = automatic).
+    preferred: String,
 }
 
 fn players(a: &App) -> Players {
-    Players { reg: a.providers.clone(), spotify: a.spotify.clone(), active: a.now_track.as_ref().map(|t| t.provider.to_string()) }
+    Players {
+        reg: a.providers.clone(),
+        spotify: a.spotify.clone(),
+        active: a.now_track.as_ref().map(|t| t.provider.to_string()),
+        preferred: a.settings.preferred_provider.clone(),
+    }
 }
 
 impl Players {
@@ -191,6 +248,33 @@ impl Players {
             return play_or_wake(&self.spotify, track).await;
         }
         self.reg.play(track).await.map_err(|e| e.to_string())
+    }
+
+    /// Play a recording from whichever copy is available: the preferred provider, else the one
+    /// already playing, else the rest. Falls through to the next copy if one fails.
+    /// Returns the copy that actually started.
+    async fn play_any(&self, state: &TrackState) -> Result<Track, String> {
+        let mut usable = vec![];
+        for p in self.reg.all() {
+            if p.is_authenticated().await {
+                usable.push(p.id().to_string());
+            }
+        }
+        let order = merge::playback_order(state.variants(), &self.preferred, self.active.as_deref(), &usable);
+        if order.is_empty() {
+            let from = state.sources().join(" or ");
+            return Err(format!("\"{}\" is only on {from}. Connect it in Settings to play this.", state.track.title));
+        }
+        let mut first_err = None;
+        for t in order {
+            match self.play(&t).await {
+                Ok(()) => return Ok(t),
+                Err(e) => {
+                    first_err.get_or_insert(e);
+                }
+            }
+        }
+        Err(first_err.unwrap_or_default())
     }
 
     /// The provider to pause/resume/seek: whoever owns the current track, else Spotify.
@@ -252,17 +336,17 @@ fn apply(a: &mut App, events: Vec<Event>) {
                 }
             }
             Event::Restarted { track } => {
-                let dur = a.library.iter().find(|t| t.track.id == track).map_or(0, |t| t.track.duration_ms);
+                let dur = state_of(a, &track).map_or(0, |t| t.track.duration_ms);
                 open_row(a, &track, dur, "repeat", "auto");
             }
             Event::External { track } => {
                 // Changed in the Spotify app: adopt it only if it is something in our library.
-                if let Some(t) = a.library.iter().find(|t| t.track.id == track).map(|t| t.track.clone()) {
-                    let _ = a.tracker.begin(track.clone(), t.duration_ms, now_ms());
-                    open_row(a, &track, t.duration_ms, "external", "external");
-                    a.capture.track_started(&a.store, &t);
-                    a.now_track = Some(t);
-                    a.history.push(track);
+                if let Some((primary, played)) = state_of(a, &track).map(|s| (s.track.clone(), s.variants().find(|v| v.id == track).cloned().unwrap_or_else(|| s.track.clone()))) {
+                    let _ = a.tracker.begin(track.clone(), played.duration_ms, now_ms());
+                    open_row(a, &track, played.duration_ms, "external", "external");
+                    a.capture.track_started(&a.store, &primary);
+                    a.history.push(primary.id.clone());
+                    a.now_track = Some(played);
                 }
             }
         }
@@ -283,7 +367,8 @@ fn open_row(a: &mut App, id: &TrackId, duration_ms: u64, mode: &str, trigger: &s
         })
         .ok();
     a.ctx_saved = false;
-    if let Some(t) = a.library.iter_mut().find(|t| &t.track.id == id) {
+    let primary = canon(a, id);
+    if let Some(t) = a.library.iter_mut().find(|t| t.track.id == primary) {
         t.play_count += 1;
         t.last_played = Some(n);
     }
@@ -302,22 +387,24 @@ fn begin_play(a: &mut App, track: &Track, mode: &str, trigger: &str, discovery: 
         a.candidates.retain(|c| c.id != track.id);
         a.suggested.push(track.id.clone());
     } else {
-        a.history.push(track.id.clone());
+        // the engine matches history against primary ids
+        let primary = canon(a, &track.id);
+        a.history.push(primary);
     }
 }
 
 /// Play a specific track (clicked in the playlist).
 #[tauri::command]
 async fn play_track(app: State<'_, Shared>, handle: AppHandle, id: String) -> Result<Option<Next>, String> {
-    let (track, players) = {
+    let (state, players) = {
         let a = app.lock().unwrap();
-        let Some(t) = a.library.iter().find(|t| t.track.id.0 == id).map(|t| t.track.clone()) else { return Ok(None) };
-        (t, players(&a))
+        let Some(s) = state_of(&a, &TrackId(id)).cloned() else { return Ok(None) };
+        (s, players(&a))
     };
-    players.play(&track).await?;
-    begin_play(&mut app.lock().unwrap(), &track, "manual", "click", false);
+    let played = players.play_any(&state).await?;
+    begin_play(&mut app.lock().unwrap(), &played, "manual", "click", false);
     capture::reconcile(&handle);
-    Ok(Some(Next { track, discovery: false }))
+    Ok(Some(Next { track: state.track, discovery: false }))
 }
 
 #[derive(Serialize)]
@@ -365,7 +452,7 @@ async fn poll_playback(app: State<'_, Shared>, handle: AppHandle) -> Result<Poll
             a.ctx_saved = true;
         }
     }
-    let result = PollResult { track: a.now_track.clone().filter(|_| matches), is_playing: pb.is_playing, position_ms: pb.position_ms, matches };
+    let result = PollResult { track: a.now_track.as_ref().filter(|_| matches).map(|t| ui_track(a, t)), is_playing: pb.is_playing, position_ms: pb.position_ms, matches };
     drop(guard);
     capture::reconcile(&handle);
     Ok(result)
@@ -409,13 +496,14 @@ fn vote_track(app: State<Shared>, track: Track, up: bool) -> Result<Vec<Row>, St
     let mut guard = app.lock().unwrap();
     let a = &mut *guard;
     let n = now();
-    if !a.library.iter().any(|t| t.track.id == track.id) {
+    if state_of(a, &track.id).is_none() {
         a.store.add_track(&track, n).map_err(|e| e.to_string())?;
         reload(a)?;
         a.store.tag_from_artist_cache().map_err(|e| e.to_string())?;
         reload(a)?;
     }
-    if let Some(t) = a.library.iter_mut().find(|t| t.track.id == track.id) {
+    let primary = canon(a, &track.id);
+    if let Some(t) = a.library.iter_mut().find(|t| t.track.id == primary) {
         t.votes.record(n, up);
         t.updated_at = n;
         let _ = a.store.record_vote(&t.track.id, n, up);
@@ -659,7 +747,7 @@ fn analysis_reset(app: State<Shared>) -> Result<(), String> {
 /// Deezer's BPM when it has one), keep the raw measurement, and let your own overrides win.
 /// Returns how many tracks changed.
 pub(crate) fn reconcile_tempos(a: &mut App) -> Result<usize, String> {
-    a.library = a.store.load_library().map_err(|e| e.to_string())?;
+    load(a)?;
     let priors = spinamp_core::tempo::TempoPriors::learn(&a.library);
     let user = a.store.user_tempos().map_err(|e| e.to_string())?;
     let mut changed = 0;
@@ -832,7 +920,9 @@ fn capture_answer(app: State<Shared>, handle: AppHandle, enable: bool, share: bo
 fn mute_track(app: State<Shared>, track_id: String, days: Option<u32>) -> Result<Vec<Row>, String> {
     let mut a = app.lock().unwrap();
     let until = days.map(|d| now() + d as i64 * 86_400);
-    a.store.set_mute(&TrackId(track_id), until).map_err(|e| e.to_string())?;
+    for id in member_ids(&a, &TrackId(track_id)) {
+        a.store.set_mute(&id, until).map_err(|e| e.to_string())?;
+    }
     reload(&mut a)?;
     Ok(rows(&a))
 }
@@ -841,7 +931,9 @@ fn mute_track(app: State<Shared>, track_id: String, days: Option<u32>) -> Result
 #[tauri::command]
 fn set_favorite(app: State<Shared>, track_id: String, favorite: bool) -> Result<Vec<Row>, String> {
     let mut a = app.lock().unwrap();
-    a.store.set_favorite(&TrackId(track_id), favorite, now()).map_err(|e| e.to_string())?;
+    for id in member_ids(&a, &TrackId(track_id)) {
+        a.store.set_favorite(&id, favorite, now()).map_err(|e| e.to_string())?;
+    }
     reload(&mut a)?;
     Ok(rows(&a))
 }
@@ -851,7 +943,9 @@ fn set_favorite(app: State<Shared>, track_id: String, favorite: bool) -> Result<
 #[tauri::command]
 fn remove_track_everywhere(app: State<Shared>, track_id: String) -> Result<Vec<Row>, String> {
     let mut a = app.lock().unwrap();
-    a.store.remove_track(&TrackId(track_id), now()).map_err(|e| e.to_string())?;
+    for id in member_ids(&a, &TrackId(track_id)) {
+        a.store.remove_track(&id, now()).map_err(|e| e.to_string())?;
+    }
     reload(&mut a)?;
     refresh_view(&mut a)?;
     Ok(rows(&a))
@@ -1048,7 +1142,7 @@ async fn provider_preview(app: State<'_, Shared>, id: String, playlist_id: Strin
 }
 
 fn reload(a: &mut App) -> Result<(), String> {
-    a.library = a.store.load_library().map_err(|e| e.to_string())?;
+    load(a)?;
     a.blocklist = Blocklist::from_rows(&a.store.list_blocks().map_err(|e| e.to_string())?);
     Ok(())
 }
@@ -1179,7 +1273,7 @@ async fn search(app: State<'_, Shared>, query: String) -> Result<Vec<Track>, Str
 fn add_to_library(app: State<Shared>, track: Track) -> Result<Vec<Row>, String> {
     let mut a = app.lock().unwrap();
     a.store.add_track(&track, now()).map_err(|e| e.to_string())?;
-    a.library = a.store.load_library().map_err(|e| e.to_string())?;
+    load(&mut a)?;
     Ok(rows(&a))
 }
 
@@ -1221,7 +1315,8 @@ pub fn run() {
     let candidates = store.load_candidates().unwrap_or_default();
     let store_blocks = store.list_blocks().unwrap_or_default();
     let _ = store.tag_from_artist_cache();
-    let tracks = store.load_library().unwrap_or_default();
+    let tracks = merge::merge_by_isrc(store.load_library().unwrap_or_default());
+    let alias = merge::alias_map(&tracks);
     let (blob, _) = credentials::load_or_migrate(&credentials::Keychain, &store, "spotify");
     let saved = blob.and_then(|j| serde_json::from_str(&j).ok());
     let spotify = Arc::new(SpotifyProvider::new(settings.client_id(), saved));
@@ -1241,6 +1336,7 @@ pub fn run() {
         spotify,
         applemusic,
         library: tracks,
+        alias,
         view: None,
         candidates,
         history: vec![],

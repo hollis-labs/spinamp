@@ -15,7 +15,7 @@ type Track = {
   duration_ms: number; tempo?: number; energy?: number; tags: string[];
   meta?: { audio?: { brightness_hz?: number; dynamic_range_db?: number; key?: string | null; moods?: string[] } | null };
 };
-type Row = Track & { weight: number; plays: number; listens: number; cooling: boolean; favorite: boolean; muted_until?: number | null; blocked: boolean };
+type Row = Track & { weight: number; plays: number; listens: number; cooling: boolean; favorite: boolean; muted_until?: number | null; blocked: boolean; sources?: string[] };
 type AnalysisS = { batch: number; next_in_secs: number; running: boolean; done: number; total: number; failed: number; current: string; error: string; analyzed: number; eligible: number; pending: number };
 type Enrich = { running: boolean; done: number; total: number; current: string; missing: number };
 type Gen = {
@@ -84,7 +84,9 @@ const COLS: ColumnDef[] = [
   { id: "plays", label: "PLAYS", full: "Plays (started)", def: true },
   { id: "heard", label: "HEARD", full: "Listens (played through)", def: false },
   { id: "weight", label: "WT", full: "Weight (thumbs, favorites)", def: true },
+  { id: "src", label: "SRC", full: "Which services have this song", def: true },
 ];
+const srcTag = (id: string) => ({ spotify: "SP", applemusic: "AM" } as Record<string, string>)[id] ?? id.slice(0, 2).toUpperCase();
 const COLS_KEY = "spinamp.columns";
 const defaultCols = () => new Set(COLS.filter((c) => c.def).map((c) => c.id));
 
@@ -127,7 +129,7 @@ function TrackTable(p: {
       <table className="tracks">
         <thead><tr>
           {show("idx") && head("idx")}<th>TITLE</th>
-          {["artist", "album", "bpm", "key", "energy", "mood", "time", "plays", "heard", "weight"].filter(show).map(head)}
+          {["artist", "album", "bpm", "key", "energy", "mood", "time", "plays", "heard", "weight", "src"].filter(show).map(head)}
           {p.full && <th />}
           {p.onAdd && <th />}
         </tr></thead>
@@ -162,6 +164,7 @@ function TrackTable(p: {
                 <span className={`meter ${(r.weight ?? 0) < 0 ? "neg" : ""}`} style={{ width: (Math.abs(r.weight ?? 0) / max) * 30 }} />
                 {(r.weight ?? 0) >= 0 ? "+" : ""}{(r.weight ?? 0).toFixed(1)}
               </span></td>}
+              {show("src") && <td className="dim nw" title={(r.sources ?? [r.id.split(":")[0]]).join(" + ")}>{(r.sources ?? [r.id.split(":")[0]]).map(srcTag).join("+")}</td>}
               {p.full && (
                 <td onClick={(e) => e.stopPropagation()}><span className="rowact">
                   <VoteButton small up title="Plus: like this more" onVote={() => p.onVote?.(r.id, true)} />

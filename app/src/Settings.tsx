@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import * as Ic from "./Icons";
 
 type S = {
-  spotify_client_id: string; callback_port: number;
+  spotify_client_id: string; callback_port: number; preferred_provider: string;
   ai_enabled: boolean; ai_model: string;
   discovery_ratio: number; discovery_sharpness: number;
   listen_threshold: number; quiet_enabled: boolean; quiet_start: number; quiet_end: number;
@@ -86,6 +86,13 @@ export default function Settings({ onClose }: { onClose: () => void }) {
         </Row>
         <Row label="Callback port" hint={`Redirect URI to register: http://127.0.0.1:${s.callback_port}/callback`}>
           <input className="inp short" type="number" value={s.callback_port} onChange={(e) => set("callback_port", Number(e.target.value))} />
+        </Row>
+
+        <h3>PLAYBACK</h3>
+        <Row label="Play from" hint="When a song is on more than one service (matched by ISRC), play it from this one. AUTO stays on whichever is already playing, to avoid switching apps.">
+          {([["", "AUTO"], ["spotify", "SPOTIFY"], ["applemusic", "APPLE MUSIC"]] as const).map(([id, label]) => (
+            <button key={id} className={`btn ${s.preferred_provider === id ? "on" : ""}`} onClick={() => set("preferred_provider", id)}>{label}</button>
+          ))}
         </Row>
 
         <h3>APPLE MUSIC</h3>

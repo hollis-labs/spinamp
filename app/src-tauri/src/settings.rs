@@ -7,6 +7,8 @@ use serde::{Deserialize, Serialize};
 pub struct Settings {
     pub spotify_client_id: String,
     pub callback_port: u16,
+    /// Which provider to play a recording from when several have it: "" = automatic.
+    pub preferred_provider: String,
     pub ai_enabled: bool,
     pub ai_model: String,
     /// Share of picks that are discovery in Shuffle+Discovery (0..1).
@@ -45,6 +47,7 @@ impl Default for Settings {
     fn default() -> Self {
         Self {
             spotify_client_id: String::new(),
+            preferred_provider: String::new(),
             callback_port: 43821,
             ai_enabled: true,
             ai_model: spinamp_services::ai::DEFAULT_MODEL.into(),
@@ -79,6 +82,7 @@ impl Settings {
         self.analyze_gap_minutes = self.analyze_gap_minutes.clamp(1, 24 * 60);
         self.viz_offset_ms = self.viz_offset_ms.clamp(-1000, 1000);
         self.spotify_client_id = self.spotify_client_id.trim().into();
+        self.preferred_provider = self.preferred_provider.trim().to_lowercase();
         self
     }
 
