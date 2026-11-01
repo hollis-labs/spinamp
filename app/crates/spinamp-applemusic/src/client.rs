@@ -9,6 +9,8 @@ use std::sync::Mutex;
 use tokio::sync::RwLock;
 
 const API: &str = "https://api.music.apple.com";
+/// Pseudo-playlist id for "everything in my library".
+pub const LIBRARY_SONGS: &str = "library-songs";
 
 /// Everything needed to talk to Apple Music; stored as one opaque blob in the OS keychain.
 /// The `.p8` is the user's own MusicKit key (bring-your-own-key).
@@ -209,13 +211,20 @@ impl MusicProvider for AppleMusicProvider {
                 .unwrap_or(0)
         }))
         .await;
-        Ok(out.into_iter().zip(counts).map(|((id, name), n)| RemotePlaylist { id, name, track_count: n }).collect())
+        // Always offer the whole library too: it is the only thing some accounts have.
+        let songs = self.get::<Page>("/v1/me/library/songs", &[("limit", "1".into())]).await.ok().and_then(|p| p.meta.and_then(|m| m.total)).unwrap_or(0);
+        crate::log(&format!("library: {} playlists, {songs} songs", out.len()));
+        let mut all = vec![RemotePlaylist { id: LIBRARY_SONGS.into(), name: "Library songs".into(), track_count: songs }];
+        all.extend(out.into_iter().zip(counts).map(|((id, name), n)| RemotePlaylist { id, name, track_count: n }));
+        Ok(all)
     }
 
     async fn playlist_tracks(&self, playlist_id: &str) -> Result<Vec<Track>> {
         let mut tracks = vec![];
         let mut offset = 0;
-        let path = if playlist_id.starts_with("p.") {
+        let path = if playlist_id == LIBRARY_SONGS {
+            "/v1/me/library/songs".to_string()
+        } else if playlist_id.starts_with("p.") {
             format!("/v1/me/library/playlists/{playlist_id}/tracks")
         } else {
             let sf = self.storefront().await?;

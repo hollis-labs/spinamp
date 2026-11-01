@@ -782,7 +782,7 @@ export default function App() {
             <div className="empty"><button className="btn" onClick={connect}><Ic.Plug /> RECONNECT</button></div></div>
           ) : (
             <div className="empty">
-              {remotes === null ? "LOADING..." : `NOT CONNECTED TO ${provName.toUpperCase()}`}<br />
+              {remotes === null ? "LOADING..." : provs.find((x) => x.id === prov)?.connected ? `CONNECTED TO ${provName.toUpperCase()}, BUT NOTHING CAME BACK` : `NOT CONNECTED TO ${provName.toUpperCase()}`}<br />
               <button className="btn primary" style={{ width: "auto", padding: "0 16px", marginTop: 10 }} onClick={connect}><Ic.Plug /> CONNECT</button>
             </div>
           )
