@@ -7,7 +7,7 @@
 
 ## Cut a release
 1. Bump the version in `app/src-tauri/tauri.conf.json`, `app/src-tauri/Cargo.toml` and `app/package.json` (keep it plain `x.y.z`: the Windows installer cannot take beta suffixes).
-2. `git tag v0.1.0 && git push --tags`. The `release` workflow builds macOS (Apple Silicon) and Windows installers, publishes them as a **prerelease**, and adds `SHA256SUMS`.
+2. `git tag v0.1.0 && git push --tags`. The `release` workflow builds the installers on our own runners and publishes them as a **prerelease** with `SHA256SUMS`: Windows is cross-built and signed on build-1 (Linux), and macOS (Apple Silicon) is built, Developer-ID signed and notarized on the home-laptop runner (`packaging/release-mac.sh`; the laptop must be awake). Signing credentials live on those machines, not in GitHub secrets (Tesseract: `project/cerberus/knowledge/build-1`). The tag must match the version in `tauri.conf.json`.
 3. `packaging/update-cask.sh 0.1.0` (Apple Silicon only), then copy the updated cask into the tap repo and push.
 4. The install scripts on spinamp.fm always read the newest release (prereleases included), so nothing else to update.
 
@@ -32,7 +32,9 @@ spctl -a -t open --context context:primary-signature -v "$DMG"   # expect: accep
 Then upload the DMG to the release (`gh release upload vX.Y.Z "$DMG" --clobber`), regenerate `SHA256SUMS`,
 and run `packaging/update-cask.sh`.
 
-**In CI (not set up yet).** A `notarytool` keychain profile lives in one Mac's keychain and cannot be copied to
+**In CI (superseded).** The workflow no longer uses these GitHub secrets; it signs on the self-hosted runners as above. Kept for reference if we ever return to hosted runners.
+
+**Old hosted-runner notes.** A `notarytool` keychain profile lives in one Mac's keychain and cannot be copied to
 GitHub, so CI needs its own credentials. Add these repository secrets and the `release` workflow signs and
 notarizes automatically (no code change):
 

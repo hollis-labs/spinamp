@@ -1,8 +1,10 @@
 name: release
 
-# Tag a version (git tag v0.1.0 && git push --tags) to build installers for macOS (Apple Silicon only:
-# see RELEASING.md) and Windows and publish them as a PRERELEASE with a SHA256SUMS file. The install scripts on
-# spinamp.fm read the newest release, prereleases included.
+# Tag a version (git tag v0.1.0 && git push --tags) to build the installers and publish them as a PRERELEASE with SHA256SUMS.
+#   Windows: cross-built on build-1 (Linux) with cargo-xwin and signed there with Azure Artifact Signing (hl-sign), if configured.
+#   macOS (Apple Silicon): built on the home-laptop self-hosted runner, signed with Developer ID and notarized there.
+# Signing credentials live on those machines, not in GitHub secrets. Tag-only trigger: PRs and forks never reach a self-hosted runner.
+# See RELEASING.md and Tesseract project/cerberus/knowledge/build-1.
 on:
   push:
     tags: ["v*"]
@@ -11,96 +13,68 @@ on:
 permissions:
   contents: write
 
+env:
+  GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
 jobs:
-  build:
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - { os: macos-latest, args: "--target aarch64-apple-darwin", targets: "aarch64-apple-darwin" }
-          - { os: windows-latest, args: "", targets: "" }
-    runs-on: ${{ matrix.os }}
+  prepare:
+    runs-on: [self-hosted, Linux, X64, build-1]
     steps:
       - uses: actions/checkout@v4
-
-      - uses: pnpm/action-setup@v4
-        with:
-          version: 10
-
-      - uses: actions/setup-node@v4
-        with:
-          node-version: 22
-          cache: pnpm
-          cache-dependency-path: app/pnpm-lock.yaml
-
-      - uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.targets }}
-
-      - uses: swatinem/rust-cache@v2
-        with:
-          workspaces: app/src-tauri -> target
-
-      - name: Install frontend dependencies
-        working-directory: app
-        run: pnpm install --frozen-lockfile
-
-      # Optional macOS signing + notarization. Add the repository secrets listed in RELEASING.md to
-      # turn it on; without them the build is simply unsigned and everything else still works.
-      - name: Detect signing secrets
-        id: sign
-        shell: bash
-        env:
-          HAS_CERT: ${{ secrets.APPLE_CERTIFICATE != '' }}
-        run: echo "enabled=$HAS_CERT" >> "$GITHUB_OUTPUT"
-
-      - name: Export macOS signing environment
-        if: runner.os == 'macOS' && steps.sign.outputs.enabled == 'true'
-        shell: bash
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      - name: Tag must match the app version
         run: |
-          {
-            echo "APPLE_CERTIFICATE=$APPLE_CERTIFICATE"
-            echo "APPLE_CERTIFICATE_PASSWORD=$APPLE_CERTIFICATE_PASSWORD"
-            echo "APPLE_SIGNING_IDENTITY=$APPLE_SIGNING_IDENTITY"
-            echo "APPLE_ID=$APPLE_ID"
-            echo "APPLE_PASSWORD=$APPLE_PASSWORD"
-            echo "APPLE_TEAM_ID=$APPLE_TEAM_ID"
-          } >> "$GITHUB_ENV"
+          v=$(sed -n 's/.*"version": "\(.*\)",/\1/p' app/src-tauri/tauri.conf.json | head -1)
+          [ "v$v" = "${{ github.ref_name }}" ] || { echo "tag ${{ github.ref_name }} != tauri.conf.json version v$v"; exit 1; }
+      - name: Create the prerelease if it does not exist
+        run: |
+          gh release view "${{ github.ref_name }}" >/dev/null 2>&1 || gh release create "${{ github.ref_name }}" \
+            --prerelease --title "Spinamp ${{ github.ref_name }}" \
+            --notes "Early release. See https://spinamp.fm for install commands. Verify downloads against SHA256SUMS."
 
-      - name: Build, bundle and publish
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        with:
-          projectPath: app
-          tagName: ${{ github.ref_name }}
-          releaseName: Spinamp ${{ github.ref_name }}
-          releaseBody: |
-            Early release. See https://spinamp.fm for install commands.
-            Verify downloads against SHA256SUMS.
-          releaseDraft: false
-          prerelease: true
-          args: ${{ matrix.args }}
+  windows:
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64, build-1]
+    timeout-minutes: 60
+    env:
+      CARGO_TARGET_DIR: ${{ github.workspace }}/../.cache-spinamp-win-target
+    steps:
+      - uses: actions/checkout@v4
+      - run: echo "$HOME/.cargo/bin" >> "$GITHUB_PATH"
+      - name: Build (and sign when Azure signing is configured on build-1)
+        working-directory: app
+        run: |
+          pnpm install --frozen-lockfile
+          cfg='{}'
+          if [ -s "$HOME/.config/signing/azure/azure.env" ]; then
+            cfg='{"bundle":{"windows":{"signCommand":"'"$GITHUB_WORKSPACE"'/packaging/sign-windows.sh %1"}}}'
+          else
+            echo "::warning::Azure signing not configured on build-1: Windows installer is UNSIGNED"
+          fi
+          cargo tauri build --runner cargo-xwin --target x86_64-pc-windows-msvc --bundles nsis --config "$cfg"
+      - name: Upload
+        run: |
+          f=$(ls "$CARGO_TARGET_DIR"/x86_64-pc-windows-msvc/release/bundle/nsis/*-setup.exe)
+          gh release upload "${{ github.ref_name }}" "$f" --clobber
+
+  macos:
+    needs: prepare
+    runs-on: [self-hosted, macOS, ARM64, mac]
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build, sign, notarize
+        id: mac
+        run: echo "dmg=$(packaging/release-mac.sh | tail -1)" >> "$GITHUB_OUTPUT"
+      - name: Upload
+        run: gh release upload "${{ github.ref_name }}" "${{ steps.mac.outputs.dmg }}" --clobber
 
   checksums:
-    needs: build
-    runs-on: ubuntu-latest
+    needs: [windows, macos]
+    runs-on: [self-hosted, Linux, X64, build-1]
     steps:
       - name: Publish SHA256SUMS
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        shell: bash
         run: |
-          mkdir dl && cd dl
-          gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" \
-            --pattern '*.dmg' --pattern '*-setup.exe' --pattern '*.msi'
-          sha256sum * > SHA256SUMS
-          cat SHA256SUMS
+          d=$(mktemp -d); cd "$d"
+          gh release download "${{ github.ref_name }}" --repo "${{ github.repository }}" --pattern '*.dmg' --pattern '*-setup.exe' --pattern '*.msi'
+          sha256sum * > SHA256SUMS; cat SHA256SUMS
           gh release upload "${{ github.ref_name }}" SHA256SUMS --clobber --repo "${{ github.repository }}"
